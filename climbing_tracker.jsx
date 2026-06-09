@@ -253,7 +253,9 @@ export default function ClimbingTracker() {
   const [injuryData, setInjuryData] = useState([]);
   const [settings, setSettings] = useState({ instrument: "Tindeq", unit: "lbs" });
   const [showSettings, setShowSettings] = useState(false);
+  const [dataStatus, setDataStatus] = useState(null); // { type: "success"|"error", msg: string }
   const initialized = useRef(false);
+  const saveTimers = useRef({});
 
   // Coach View state
   const [coachUsers, setCoachUsers] = useState([]);
@@ -327,12 +329,18 @@ export default function ClimbingTracker() {
     setTab("today");
   }
 
-  // Save on changes — write to shared storage under user prefix
-  useEffect(() => { if (initialized.current && currentUser) storageSet(userKey(currentUser, "daily"), dailyData, true); }, [dailyData]);
-  useEffect(() => { if (initialized.current && currentUser) storageSet(userKey(currentUser, "climbs"), climbData, true); }, [climbData]);
-  useEffect(() => { if (initialized.current && currentUser) storageSet(userKey(currentUser, "assess"), assessData, true); }, [assessData]);
-  useEffect(() => { if (initialized.current && currentUser) storageSet(userKey(currentUser, "injury"), injuryData, true); }, [injuryData]);
-  useEffect(() => { if (initialized.current && currentUser) storageSet(userKey(currentUser, "settings"), settings, true); }, [settings]);
+  // Debounced save — batches rapid edits into a single write per data key
+  const debouncedSave = useCallback((key, value) => {
+    if (!initialized.current || !currentUser) return;
+    clearTimeout(saveTimers.current[key]);
+    saveTimers.current[key] = setTimeout(() => storageSet(userKey(currentUser, key), value, true), 500);
+  }, [currentUser]);
+
+  useEffect(() => { debouncedSave("daily", dailyData); }, [dailyData, debouncedSave]);
+  useEffect(() => { debouncedSave("climbs", climbData); }, [climbData, debouncedSave]);
+  useEffect(() => { debouncedSave("assess", assessData); }, [assessData, debouncedSave]);
+  useEffect(() => { debouncedSave("injury", injuryData); }, [injuryData, debouncedSave]);
+  useEffect(() => { debouncedSave("settings", settings); }, [settings, debouncedSave]);
 
   // Load Coach View user list
   useEffect(() => {
@@ -353,11 +361,11 @@ export default function ClimbingTracker() {
     if (inst === "Tindeq") {
       const gf = gripFields("tindeq", dd.tindeqGripType, dd.tindeqIntensity);
       const valL = dd[gf.L]; const valR = dd[gf.R];
-      if ((valL || valR) && !dc.baselineL && !dc.baselineR) {
+      if ((valL || valR) && (dc.baselineL == null || dc.baselineL === "") && (dc.baselineR == null || dc.baselineR === "")) {
         setClimbData(prev => ({ ...prev, [selectedDate]: { ...prev[selectedDate], baselineL: valL || "", baselineR: valR || "", baselineInstrument: "Tindeq", baselineGripType: dd.tindeqGripType || "Half Crimp", baselineIntensity: dd.tindeqIntensity || "Try Hard" } }));
       }
     }
-    if (inst === "Dynamometer" && (dd.gripL || dd.gripR) && !dc.baselineGripL && !dc.baselineGripR) {
+    if (inst === "Dynamometer" && (dd.gripL || dd.gripR) && (dc.baselineGripL == null || dc.baselineGripL === "") && (dc.baselineGripR == null || dc.baselineGripR === "")) {
       setClimbData(prev => ({ ...prev, [selectedDate]: { ...prev[selectedDate], baselineGripL: dd.gripL || "", baselineGripR: dd.gripR || "", baselineInstrument: "Dynamometer" } }));
     }
   }, [dailyData, selectedDate, climbData, settings.instrument]);
@@ -393,6 +401,7 @@ export default function ClimbingTracker() {
   const ewmaData = useMemo(() => computeEWMA(dailyData, datesSorted), [dailyData, datesSorted]);
   const todayEWMA = ewmaData[selectedDate] || { acute: 0, chronic: 0, ratio: 0 };
 
+  const readiness = useMemo(() => {
   const getReadiness = () => {
     if (wellnessCount < 4) return { flag: "—", color: "gray", label: "Incomplete", items: [], isBaseline: false, baselineDay: 0 };
 
@@ -416,7 +425,9 @@ export default function ClimbingTracker() {
         else if (fz < -1) forceZFlag = { label: "Force", arrow: "↓", z: fz, pct: Math.round(((curForce - fStats.mean) / fStats.mean) * 100) };
       } else {
         // No SD yet, use simple % drop
-        const avg14 = forceVals.slice(-14).reduce((a, b) => a + b, 0) / forceVals.slice(-14).length;
+        const slice14 = forceVals.slice(-14);
+        if (!slice14.length) return;
+        const avg14 = slice14.reduce((a, b) => a + b, 0) / slice14.length;
         const pctDrop = (curForce - avg14) / avg14;
         if (pctDrop < -0.15) forceZFlag = { label: "Force", arrow: "↓↓", z: null, pct: Math.round(pctDrop * 100) };
         else if (pctDrop < -0.1) forceZFlag = { label: "Force", arrow: "↓", z: null, pct: Math.round(pctDrop * 100) };
@@ -484,8 +495,15 @@ export default function ClimbingTracker() {
     }
     return { flag: "GO", color: "green", label: "Ready to perform", items: [], isBaseline: false, baselineDay: daysWithData };
   };
-  const readiness = getReadiness();
+  return getReadiness();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dailyData, selectedDate, settings.instrument, wellnessCount, wellnessTotal, day, datesSorted]);
   const shiftDate = (days) => { const d = new Date(selectedDate + "T12:00:00"); d.setDate(d.getDate() + days); setSelectedDate(d.toISOString().slice(0, 10)); };
+
+  const showStatus = (type, msg) => {
+    setDataStatus({ type, msg });
+    setTimeout(() => setDataStatus(null), 3000);
+  };
 
   // Export
   const handleExport = async () => {
@@ -494,6 +512,7 @@ export default function ClimbingTracker() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = `summit-${currentUser}-${todayStr()}.json`; a.click();
     URL.revokeObjectURL(url);
+    showStatus("success", "Exported successfully");
   };
 
   // Import
@@ -507,7 +526,8 @@ export default function ClimbingTracker() {
         if (data.assess) setAssessData(data.assess);
         if (data.injury) setInjuryData(data.injury);
         if (data.settings) setSettings(data.settings);
-      } catch { /* invalid file */ }
+        showStatus("success", `Imported ${Object.keys(data.daily || {}).length} days`);
+      } catch { showStatus("error", "Import failed — invalid file"); }
     };
     reader.readAsText(file);
   };
@@ -529,8 +549,9 @@ export default function ClimbingTracker() {
         <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-sky-500 to-emerald-500 flex items-center justify-center mx-auto"><Mountain size={32} className="text-white" /></div>
         <div><h1 className="text-2xl font-bold text-slate-200">Summit</h1><p className="text-sm text-slate-500 mt-1">Climbing Performance Tracker</p></div>
         <div className="space-y-3">
-          <input type="text" value={nameInput} onChange={e => setNameInput(e.target.value)} placeholder="Enter your name"
+          <input type="text" value={nameInput} onChange={e => setNameInput(e.target.value)} placeholder="Enter your name" maxLength={40}
             className="w-full bg-slate-900/60 border border-slate-600/50 rounded-xl px-4 py-3 text-center text-slate-200 focus:outline-none focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/30 placeholder-slate-600" onKeyDown={e => { if (e.key === "Enter") selectUser(nameInput); }} />
+          {nameInput.length > 30 && <p className="text-[10px] text-slate-500 text-right">{nameInput.trim().length}/40</p>}
           <button onClick={() => selectUser(nameInput)} disabled={!nameInput.trim()}
             className={`w-full py-3 rounded-xl text-sm font-semibold transition-all ${nameInput.trim() ? "bg-sky-500 text-white hover:bg-sky-600" : "bg-slate-800 text-slate-600 cursor-not-allowed"}`}>Start Tracking</button>
           <p className="text-[10px] text-slate-600">Your data is stored under this name. Use the same name across sessions.</p>
@@ -569,7 +590,8 @@ export default function ClimbingTracker() {
             <button onClick={handleExport} className="flex-1 py-2 bg-sky-500/10 border border-sky-500/20 rounded-lg text-xs text-sky-400 hover:bg-sky-500/20 transition-all font-semibold flex items-center justify-center gap-1"><Download size={12} />Export</button>
             <label className="flex-1 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-xs text-emerald-400 hover:bg-emerald-500/20 transition-all font-semibold text-center cursor-pointer flex items-center justify-center gap-1"><Upload size={12} />Import<input type="file" accept=".json" className="hidden" onChange={e => { if (e.target.files[0]) handleImport(e.target.files[0]); }} /></label>
           </div>
-          <p className="text-[10px] text-slate-600 mt-1">{Object.keys(dailyData).length} days logged</p>
+          {dataStatus && <p className={`text-[10px] mt-1.5 font-semibold ${dataStatus.type === "error" ? "text-red-400" : "text-emerald-400"}`}>{dataStatus.msg}</p>}
+          {!dataStatus && <p className="text-[10px] text-slate-600 mt-1">{Object.keys(dailyData).length} days logged</p>}
         </div>
       </div>}
       <main className="max-w-2xl mx-auto px-4 py-4 pb-24">
@@ -945,7 +967,10 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
                 <SentToggle sent={climb.sent} onChange={v => updateClimb(idx, "sent", v)} />
               </div>
               <div className="bg-slate-900/40 rounded-lg p-3 space-y-3">
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider">Post-Climb Force (L/R)</div>
+                <div className="flex items-center justify-between">
+                  <div className="text-[10px] text-slate-500 uppercase tracking-wider">Post-Climb Force (L/R)</div>
+                  {baselineEmpty && <span className="text-[10px] text-amber-500/80">Log a baseline above to see % cost</span>}
+                </div>
                 <InstrumentToggle value={climb.instrument || settings.instrument} onChange={v => updateClimb(idx, "instrument", v)} />
                 {climb.instrument === "Tindeq" && <>
                   <div className="mb-1"><label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5 block">Grip Position</label><GripPositionToggle gripType={climb.tindeqGripType || "Half Crimp"} intensity={climb.tindeqIntensity || "Try Hard"} onChangeType={v => updateClimb(idx, "tindeqGripType", v)} onChangeIntensity={v => updateClimb(idx, "tindeqIntensity", v)} /></div>
@@ -1504,7 +1529,7 @@ function CoachUserCard({ username, isSelf, onDrillDown }) {
       const totalClimbs = Object.values(data.climbs || {}).reduce((a, d) => a + (d.climbs?.length || 0), 0);
       setSummary({ dates: dates.length, lastDate, ratio: lastEWMA?.ratio, totalClimbs });
     });
-  }, [username]);
+  }, [username, loadUserData]);
 
   return (
     <Card onClick={onDrillDown}>
