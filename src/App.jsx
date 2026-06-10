@@ -1,48 +1,46 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, Cell, ComposedChart, Area } from "recharts";
 import { Activity, ChevronLeft, ChevronRight, Plus, Trash2, TrendingUp, AlertTriangle, CheckCircle, MinusCircle, Heart, BarChart3, Mountain, Settings, X, ChevronDown, ChevronUp, Check, Download, Upload, Loader, Users } from "lucide-react";
+import { supabase } from './supabase';
 
-// ─── Async Storage Layer (window.storage) — multi-user via shared storage ───
-const DATA_KEYS = ["daily", "climbs", "assess", "injury", "settings"];
-
-async function storageGet(key, fallback, shared = false) {
+// ─── Supabase Storage Layer ───
+async function dbGet(table, userId, fallback) {
   try {
-    const result = await window.storage.get(key, shared);
-    return result && result.value ? JSON.parse(result.value) : fallback;
+    const { data, error } = await supabase.from(table).select('data').eq('user_id', userId).maybeSingle();
+    if (error) throw error;
+    return data?.data ?? fallback;
   } catch { return fallback; }
 }
 
-async function storageSet(key, value, shared = false) {
-  try { await window.storage.set(key, JSON.stringify(value), shared); } catch (e) { console.error("Storage save error:", e); }
+async function dbSet(table, userId, value) {
+  try {
+    const { error } = await supabase.from(table).upsert({ user_id: userId, data: value }, { onConflict: 'user_id' });
+    if (error) throw error;
+  } catch (e) { console.error(`DB save error (${table}):`, e); }
 }
 
-// User-prefixed keys for shared storage
-const userKey = (username, dataType) => `${username.toLowerCase().replace(/\s+/g, "-")}:${dataType}`;
-
-// Get/set current user identity (personal, not shared)
-async function getCurrentUser() { return storageGet("summit-user", null, false); }
-async function setCurrentUser(name) { return storageSet("summit-user", name, false); }
-
-// Register a user in the shared user list
-async function registerUser(name) {
-  const users = await storageGet("summit-users", [], true);
-  const clean = name.trim();
-  if (!users.includes(clean)) {
-    users.push(clean);
-    await storageSet("summit-users", users, true);
-  }
+async function getProfile(userId) {
+  const { data } = await supabase.from('profiles').select('username').eq('id', userId).maybeSingle();
+  return data?.username ?? null;
 }
-async function getAllUsers() { return storageGet("summit-users", [], true); }
 
-// Load all data for a specific user from shared storage
-async function loadUserData(username) {
-  const k = (t) => userKey(username, t);
+async function upsertProfile(userId, username) {
+  await supabase.from('profiles').upsert({ id: userId, username }, { onConflict: 'id' });
+}
+
+// Returns { id, username }[]
+async function getAllUsers() {
+  const { data } = await supabase.from('profiles').select('id, username').order('username');
+  return data || [];
+}
+
+async function loadUserData(userId) {
   const [daily, climbs, assess, injury, sett] = await Promise.all([
-    storageGet(k("daily"), {}, true),
-    storageGet(k("climbs"), {}, true),
-    storageGet(k("assess"), [], true),
-    storageGet(k("injury"), [], true),
-    storageGet(k("settings"), { instrument: "Tindeq", unit: "lbs" }, true),
+    dbGet('daily_logs', userId, {}),
+    dbGet('climb_logs', userId, {}),
+    dbGet('assessments', userId, []),
+    dbGet('injury_logs', userId, []),
+    dbGet('settings', userId, { instrument: 'Tindeq', unit: 'lbs' }),
   ]);
   return { daily, climbs, assess, injury, settings: sett };
 }
@@ -243,8 +241,15 @@ const SentToggle = ({ sent, onChange }) => (
 // ─── Main App ───
 export default function ClimbingTracker() {
   const [loading, setLoading] = useState(true);
-  const [currentUser, setCurrentUserState] = useState(null);
-  const [nameInput, setNameInput] = useState("");
+  const [userId, setUserId] = useState(null);
+  const [displayName, setDisplayName] = useState(null);
+  // Auth form state
+  const [authMode, setAuthMode] = useState("signin"); // "signin" | "signup"
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authName, setAuthName] = useState("");
+  const [authError, setAuthError] = useState(null);
+  const [authLoading, setAuthLoading] = useState(false);
   const [tab, setTab] = useState("today");
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [dailyData, setDailyData] = useState({});
@@ -253,54 +258,51 @@ export default function ClimbingTracker() {
   const [injuryData, setInjuryData] = useState([]);
   const [settings, setSettings] = useState({ instrument: "Tindeq", unit: "lbs" });
   const [showSettings, setShowSettings] = useState(false);
-  const [dataStatus, setDataStatus] = useState(null); // { type: "success"|"error", msg: string }
+  const [dataStatus, setDataStatus] = useState(null);
   const initialized = useRef(false);
   const saveTimers = useRef({});
 
-  // Coach View state
+  // Coach View state — coachUsers is { id, username }[]
   const [coachUsers, setCoachUsers] = useState([]);
-  const [coachViewUser, setCoachViewUser] = useState(null); // null = summary, string = drill-down
-  const [coachData, setCoachData] = useState(null); // loaded data for drill-down user
+  const [coachViewUser, setCoachViewUser] = useState(null); // null | { id, username }
+  const [coachData, setCoachData] = useState(null);
 
-  // Init: migrate old data → Jesse, then load current user
+  // Listen to Supabase auth state changes
   useEffect(() => {
-    async function init() {
-      // One-time migration of old unprefixed data → current user (or "Athlete" fallback)
-      const migrated = await storageGet("summit-migrated", false, false);
-      if (!migrated) {
-        const oldDaily = await storageGet("cpt-daily", null, false);
-        const oldClimbs = await storageGet("cpt-climbs", null, false);
-        const oldAssess = await storageGet("cpt-assess", null, false);
-        const oldInjury = await storageGet("cpt-injury", null, false);
-        const oldSettings = await storageGet("cpt-settings", null, false);
-        if (oldDaily || oldClimbs || oldAssess || oldInjury) {
-          const existingName = await getCurrentUser();
-          const t = existingName || "Athlete";
-          if (oldDaily) await storageSet(userKey(t, "daily"), oldDaily, true);
-          if (oldClimbs) await storageSet(userKey(t, "climbs"), oldClimbs, true);
-          if (oldAssess) await storageSet(userKey(t, "assess"), oldAssess, true);
-          if (oldInjury) await storageSet(userKey(t, "injury"), oldInjury, true);
-          if (oldSettings) await storageSet(userKey(t, "settings"), oldSettings, true);
-          await registerUser(t);
-          await setCurrentUser(t);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        const uid = session.user.id;
+        setUserId(uid);
+        setLoading(true);
+        const name = await getProfile(uid);
+        if (name) {
+          setDisplayName(name);
+          await loadDataForUser(uid);
+        } else {
+          // Authenticated but no profile yet — profile screen will show
+          setLoading(false);
         }
-        await storageSet("summit-migrated", true, false);
-      }
-      // Load current user
-      const saved = await getCurrentUser();
-      if (saved) {
-        setCurrentUserState(saved);
-        await loadDataForUser(saved);
       } else {
+        setUserId(null);
+        setDisplayName(null);
+        initialized.current = false;
+        setDailyData({});
+        setClimbData({});
+        setAssessData([]);
+        setInjuryData([]);
+        setSettings({ instrument: "Tindeq", unit: "lbs" });
         setLoading(false);
       }
-    }
-    init();
+    });
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) setLoading(false);
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
   // Load data for a user
-  async function loadDataForUser(username) {
-    const data = await loadUserData(username);
+  async function loadDataForUser(uid) {
+    const data = await loadUserData(uid);
     setDailyData(data.daily);
     setClimbData(data.climbs);
     setAssessData(data.assess);
@@ -310,31 +312,36 @@ export default function ClimbingTracker() {
     setLoading(false);
   }
 
-  // Register and select a user
-  async function selectUser(name) {
-    const clean = name.trim();
-    if (!clean) return;
-    await setCurrentUser(clean);
-    await registerUser(clean);
-    setCurrentUserState(clean);
-    setLoading(true);
-    await loadDataForUser(clean);
+  async function handleSignIn() {
+    setAuthError(null); setAuthLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
+    if (error) { setAuthError(error.message); setAuthLoading(false); }
   }
 
-  // Switch user (from settings)
-  async function switchUser() {
+  async function handleSignUp() {
+    if (!authName.trim()) { setAuthError("Display name is required"); return; }
+    setAuthError(null); setAuthLoading(true);
+    const { data, error } = await supabase.auth.signUp({ email: authEmail, password: authPassword });
+    if (error) { setAuthError(error.message); setAuthLoading(false); return; }
+    if (data.user) await upsertProfile(data.user.id, authName.trim());
+    setAuthLoading(false);
+  }
+
+  async function handleSignOut() {
     initialized.current = false;
-    setCurrentUserState(null);
-    setLoading(false);
+    await supabase.auth.signOut();
     setTab("today");
   }
 
-  // Debounced save — batches rapid edits into a single write per data key
+  // Debounced save — batches rapid edits into a single Supabase upsert per table
+  const TABLE_MAP = { daily: "daily_logs", climbs: "climb_logs", assess: "assessments", injury: "injury_logs", settings: "settings" };
   const debouncedSave = useCallback((key, value) => {
-    if (!initialized.current || !currentUser) return;
+    if (!initialized.current || !userId) return;
+    const table = TABLE_MAP[key]; if (!table) return;
     clearTimeout(saveTimers.current[key]);
-    saveTimers.current[key] = setTimeout(() => storageSet(userKey(currentUser, key), value, true), 500);
-  }, [currentUser]);
+    saveTimers.current[key] = setTimeout(() => dbSet(table, userId, value), 500);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   useEffect(() => { debouncedSave("daily", dailyData); }, [dailyData, debouncedSave]);
   useEffect(() => { debouncedSave("climbs", climbData); }, [climbData, debouncedSave]);
@@ -507,10 +514,10 @@ export default function ClimbingTracker() {
 
   // Export
   const handleExport = async () => {
-    const data = { version: 7, user: currentUser, exportDate: new Date().toISOString(), daily: dailyData, climbs: climbData, assess: assessData, injury: injuryData, settings };
+    const data = { version: 7, user: displayName, exportDate: new Date().toISOString(), daily: dailyData, climbs: climbData, assess: assessData, injury: injuryData, settings };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = `summit-${currentUser}-${todayStr()}.json`; a.click();
+    const a = document.createElement("a"); a.href = url; a.download = `summit-${displayName}-${todayStr()}.json`; a.click();
     URL.revokeObjectURL(url);
     showStatus("success", "Exported successfully");
   };
@@ -541,32 +548,66 @@ export default function ClimbingTracker() {
     { id: "coach", label: "Coach", icon: Users },
   ];
 
-  // User selection screen
-  if (!currentUser && !loading) return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center" style={{ fontFamily: "'DM Sans', sans-serif" }}>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
-      <div className="text-center space-y-6 px-8 max-w-sm w-full">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-sky-500 to-emerald-500 flex items-center justify-center mx-auto"><Mountain size={32} className="text-white" /></div>
-        <div><h1 className="text-2xl font-bold text-slate-200">Summit</h1><p className="text-sm text-slate-500 mt-1">Climbing Performance Tracker</p></div>
-        <div className="space-y-3">
-          <input type="text" value={nameInput} onChange={e => setNameInput(e.target.value)} placeholder="Enter your name" maxLength={40}
-            className="w-full bg-slate-900/60 border border-slate-600/50 rounded-xl px-4 py-3 text-center text-slate-200 focus:outline-none focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/30 placeholder-slate-600" onKeyDown={e => { if (e.key === "Enter") selectUser(nameInput); }} />
-          {nameInput.length > 30 && <p className="text-[10px] text-slate-500 text-right">{nameInput.trim().length}/40</p>}
-          <button onClick={() => selectUser(nameInput)} disabled={!nameInput.trim()}
-            className={`w-full py-3 rounded-xl text-sm font-semibold transition-all ${nameInput.trim() ? "bg-sky-500 text-white hover:bg-sky-600" : "bg-slate-800 text-slate-600 cursor-not-allowed"}`}>Start Tracking</button>
-          <p className="text-[10px] text-slate-600">Your data is stored under this name. Use the same name across sessions.</p>
-        </div>
-      </div>
-    </div>
-  );
-
+  // Loading screen
   if (loading) return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center">
       <div className="text-center space-y-3">
         <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-sky-500 to-emerald-500 flex items-center justify-center mx-auto"><Mountain size={24} className="text-white" /></div>
         <div className="text-lg font-bold text-slate-200">Summit</div>
-        <div className="text-sm text-slate-500">{currentUser}</div>
+        {displayName && <div className="text-sm text-slate-500">{displayName}</div>}
         <Loader size={18} className="text-sky-400 animate-spin mx-auto" />
+      </div>
+    </div>
+  );
+
+  // Auth screen — sign in / sign up
+  if (!userId) return (
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
+      <div className="text-center space-y-6 px-8 max-w-sm w-full">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-sky-500 to-emerald-500 flex items-center justify-center mx-auto"><Mountain size={32} className="text-white" /></div>
+        <div><h1 className="text-2xl font-bold text-slate-200">Summit</h1><p className="text-sm text-slate-500 mt-1">Climbing Performance Tracker</p></div>
+        <div className="flex gap-1 bg-slate-900/50 rounded-xl p-1">
+          {["signin", "signup"].map(m => <button key={m} onClick={() => { setAuthMode(m); setAuthError(null); }} className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${authMode === m ? "bg-slate-700/60 text-white" : "text-slate-500 hover:text-slate-300"}`}>{m === "signin" ? "Sign In" : "Create Account"}</button>)}
+        </div>
+        <div className="space-y-3">
+          {authMode === "signup" && (
+            <input type="text" value={authName} onChange={e => setAuthName(e.target.value)} placeholder="Display name" maxLength={40}
+              className="w-full bg-slate-900/60 border border-slate-600/50 rounded-xl px-4 py-3 text-slate-200 focus:outline-none focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/30 placeholder-slate-600" />
+          )}
+          <input type="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)} placeholder="Email"
+            className="w-full bg-slate-900/60 border border-slate-600/50 rounded-xl px-4 py-3 text-slate-200 focus:outline-none focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/30 placeholder-slate-600"
+            onKeyDown={e => { if (e.key === "Enter") authMode === "signin" ? handleSignIn() : handleSignUp(); }} />
+          <input type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)} placeholder="Password"
+            className="w-full bg-slate-900/60 border border-slate-600/50 rounded-xl px-4 py-3 text-slate-200 focus:outline-none focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/30 placeholder-slate-600"
+            onKeyDown={e => { if (e.key === "Enter") authMode === "signin" ? handleSignIn() : handleSignUp(); }} />
+          {authError && <p className="text-xs text-red-400 text-left">{authError}</p>}
+          <button onClick={authMode === "signin" ? handleSignIn : handleSignUp}
+            disabled={authLoading || !authEmail.trim() || !authPassword.trim()}
+            className={`w-full py-3 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${(!authLoading && authEmail.trim() && authPassword.trim()) ? "bg-sky-500 text-white hover:bg-sky-600" : "bg-slate-800 text-slate-600 cursor-not-allowed"}`}>
+            {authLoading ? <Loader size={14} className="animate-spin" /> : authMode === "signin" ? "Sign In" : "Create Account"}
+          </button>
+          <p className="text-[10px] text-slate-600">Your data is securely stored in Supabase and tied to your account.</p>
+        </div>
+      </div>
+    </div>
+  );
+
+  // New user — authenticated but no profile yet
+  if (userId && !displayName) return (
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+      <div className="text-center space-y-6 px-8 max-w-sm w-full">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-sky-500 to-emerald-500 flex items-center justify-center mx-auto"><Mountain size={32} className="text-white" /></div>
+        <div><h1 className="text-2xl font-bold text-slate-200">One more step</h1><p className="text-sm text-slate-500 mt-1">Choose a display name for your profile</p></div>
+        <div className="space-y-3">
+          <input type="text" value={authName} onChange={e => setAuthName(e.target.value)} placeholder="Display name" maxLength={40}
+            className="w-full bg-slate-900/60 border border-slate-600/50 rounded-xl px-4 py-3 text-center text-slate-200 focus:outline-none focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/30 placeholder-slate-600"
+            onKeyDown={async e => { if (e.key === "Enter" && authName.trim()) { await upsertProfile(userId, authName.trim()); setDisplayName(authName.trim()); loadDataForUser(userId); } }} />
+          {authError && <p className="text-xs text-red-400">{authError}</p>}
+          <button onClick={async () => { if (!authName.trim()) return; await upsertProfile(userId, authName.trim()); setDisplayName(authName.trim()); loadDataForUser(userId); }}
+            disabled={!authName.trim()}
+            className={`w-full py-3 rounded-xl text-sm font-semibold transition-all ${authName.trim() ? "bg-sky-500 text-white hover:bg-sky-600" : "bg-slate-800 text-slate-600 cursor-not-allowed"}`}>Start Tracking</button>
+        </div>
       </div>
     </div>
   );
@@ -582,7 +623,7 @@ export default function ClimbingTracker() {
       </header>
       {showSettings && <div className="max-w-2xl mx-auto px-4 py-4 bg-slate-900/50 border-b border-slate-800/50 space-y-4">
         <div className="flex items-center justify-between"><span className="text-sm font-semibold text-slate-300">Settings</span><button onClick={() => setShowSettings(false)}><X size={16} className="text-slate-500" /></button></div>
-        <div><div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">Logged in as</div><div className="flex items-center justify-between bg-slate-900/60 rounded-lg px-3 py-2 border border-slate-700/40"><span className="text-sm font-semibold text-slate-200">{currentUser}</span><button onClick={switchUser} className="text-[10px] text-sky-400 hover:text-sky-300 font-semibold">Switch</button></div></div>
+        <div><div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">Logged in as</div><div className="flex items-center justify-between bg-slate-900/60 rounded-lg px-3 py-2 border border-slate-700/40"><span className="text-sm font-semibold text-slate-200">{displayName}</span><button onClick={handleSignOut} className="text-[10px] text-sky-400 hover:text-sky-300 font-semibold">Sign Out</button></div></div>
         <div><div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">Default Instrument</div><InstrumentToggle value={settings.instrument} onChange={v => setSettings(p => ({ ...p, instrument: v }))} /></div>
         <div><div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">Units</div><div className="flex gap-1 bg-slate-900/60 rounded-lg p-0.5 border border-slate-700/40">{["lbs", "kg"].map(u => <button key={u} onClick={() => setSettings(p => ({ ...p, unit: u }))} className={`flex-1 py-1.5 px-2 rounded-md text-[10px] font-semibold transition-all ${settings.unit === u ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30" : "text-slate-500 hover:text-slate-300"}`}>{u}</button>)}</div></div>
         <div><div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">Data Management</div>
@@ -600,7 +641,7 @@ export default function ClimbingTracker() {
         {tab === "assess" && <AssessView {...{ assessData, setAssessData, settings }} />}
         {tab === "injury" && <InjuryView {...{ injuryData, setInjuryData, dailyData, ewmaData, datesSorted }} />}
         {tab === "dashboard" && <DashboardView {...{ dailyData, ewmaData, datesSorted, assessData, climbData }} />}
-        {tab === "coach" && <CoachView {...{ coachUsers, currentUser, loadUserData, coachViewUser, setCoachViewUser, coachData, setCoachData }} />}
+        {tab === "coach" && <CoachView {...{ coachUsers, currentUser: displayName, loadUserData, coachViewUser, setCoachViewUser, coachData, setCoachData }} />}
       </main>
       <nav className="fixed bottom-0 left-0 right-0 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800/50 z-50">
         <div className="max-w-2xl mx-auto flex">
@@ -1385,11 +1426,12 @@ function DashboardView({ dailyData, ewmaData, datesSorted, assessData, climbData
 function CoachView({ coachUsers, currentUser, loadUserData, coachViewUser, setCoachViewUser, coachData, setCoachData }) {
   const [loadingUser, setLoadingUser] = useState(false);
 
-  const drillDown = async (username) => {
+  // user: { id, username }
+  const drillDown = async (user) => {
     setLoadingUser(true);
-    const data = await loadUserData(username);
+    const data = await loadUserData(user.id);
     setCoachData(data);
-    setCoachViewUser(username);
+    setCoachViewUser(user);
     setLoadingUser(false);
   };
 
@@ -1399,9 +1441,9 @@ function CoachView({ coachUsers, currentUser, loadUserData, coachViewUser, setCo
       <div className="space-y-4">
         <h2 className="text-lg font-bold">Coach View</h2>
         <p className="text-xs text-slate-500">{coachUsers.length} athlete{coachUsers.length !== 1 ? "s" : ""} registered</p>
-        {coachUsers.length === 0 && <Card><div className="text-center text-slate-500 py-8 text-sm">No athletes yet. Share the artifact link with your team — they'll appear here once they enter their name and start logging.</div></Card>}
+        {coachUsers.length === 0 && <Card><div className="text-center text-slate-500 py-8 text-sm">No athletes yet. Athletes will appear here once they sign up and start logging.</div></Card>}
         {coachUsers.map(user => (
-          <CoachUserCard key={user} username={user} isSelf={user === currentUser} onDrillDown={() => drillDown(user)} />
+          <CoachUserCard key={user.id} userId={user.id} username={user.username} isSelf={user.username === currentUser} onDrillDown={() => drillDown(user)} />
         ))}
       </div>
     );
@@ -1409,7 +1451,7 @@ function CoachView({ coachUsers, currentUser, loadUserData, coachViewUser, setCo
 
   // Drill-down view — a specific user's data
   if (loadingUser) return (
-    <div className="text-center py-12"><Loader size={24} className="text-sky-400 animate-spin mx-auto mb-3" /><div className="text-sm text-slate-500">Loading {coachViewUser}'s data...</div></div>
+    <div className="text-center py-12"><Loader size={24} className="text-sky-400 animate-spin mx-auto mb-3" /><div className="text-sm text-slate-500">Loading {coachViewUser.username}'s data...</div></div>
   );
 
   if (!coachData) return null;
@@ -1454,8 +1496,8 @@ function CoachView({ coachUsers, currentUser, loadUserData, coachViewUser, setCo
         <ChevronLeft size={14} /> All Athletes
       </button>
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-emerald-500 flex items-center justify-center text-white font-bold text-lg">{coachViewUser.charAt(0).toUpperCase()}</div>
-        <div><h2 className="text-lg font-bold">{coachViewUser}</h2><div className="text-xs text-slate-500">{dates.length} days logged · {totalClimbs} climbs · {totalSends} sends</div></div>
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-emerald-500 flex items-center justify-center text-white font-bold text-lg">{coachViewUser.username.charAt(0).toUpperCase()}</div>
+        <div><h2 className="text-lg font-bold">{coachViewUser.username}</h2><div className="text-xs text-slate-500">{dates.length} days logged · {totalClimbs} climbs · {totalSends} sends</div></div>
       </div>
 
       <div className="grid grid-cols-3 gap-2">
@@ -1517,11 +1559,11 @@ function CoachView({ coachUsers, currentUser, loadUserData, coachViewUser, setCo
 }
 
 // ─── COACH USER CARD (summary for one athlete) ───
-function CoachUserCard({ username, isSelf, onDrillDown }) {
+function CoachUserCard({ userId, username, isSelf, onDrillDown }) {
   const [summary, setSummary] = useState(null);
 
   useEffect(() => {
-    loadUserData(username).then(data => {
+    loadUserData(userId).then(data => {
       const dates = Object.keys(data.daily || {}).sort();
       const lastDate = dates.length > 0 ? dates[dates.length - 1] : null;
       const ewma = computeEWMA(data.daily || {}, dates);
@@ -1529,7 +1571,7 @@ function CoachUserCard({ username, isSelf, onDrillDown }) {
       const totalClimbs = Object.values(data.climbs || {}).reduce((a, d) => a + (d.climbs?.length || 0), 0);
       setSummary({ dates: dates.length, lastDate, ratio: lastEWMA?.ratio, totalClimbs });
     });
-  }, [username, loadUserData]);
+  }, [userId]);
 
   return (
     <Card onClick={onDrillDown}>
