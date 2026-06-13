@@ -297,19 +297,33 @@ export default function ClimbingTracker() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session) setLoading(false);
     });
-    return () => subscription.unsubscribe();
+    // Hard safety net: if auth + data fetch takes longer than 8 s (e.g. slow
+    // network on first launch from home screen), stop the spinner so the user
+    // sees the sign-in screen rather than an infinite wheel.
+    const launchTimeout = setTimeout(() => setLoading(false), 8000);
+    return () => { subscription.unsubscribe(); clearTimeout(launchTimeout); };
   }, []);
 
-  // Load data for a user
+  // Load data for a user — wrapped in a 6s timeout so a slow/offline network
+  // never leaves the app stuck on the loading screen after launch.
   async function loadDataForUser(uid) {
-    const data = await loadUserData(uid);
-    setDailyData(data.daily);
-    setClimbData(data.climbs);
-    setAssessData(data.assess);
-    setInjuryData(data.injury);
-    setSettings(data.settings);
-    initialized.current = true;
-    setLoading(false);
+    try {
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 6000)
+      );
+      const data = await Promise.race([loadUserData(uid), timeout]);
+      setDailyData(data.daily);
+      setClimbData(data.climbs);
+      setAssessData(data.assess);
+      setInjuryData(data.injury);
+      setSettings(data.settings);
+      initialized.current = true;
+    } catch {
+      // Offline or slow — open with empty local state; data will sync when
+      // connectivity resumes and the user triggers a save.
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleSignIn() {
