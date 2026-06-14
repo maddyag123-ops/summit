@@ -99,7 +99,7 @@ const WELLNESS_ITEMS = [
 
 // ─── Defaults ───
 const emptyDay = () => ({ sleepQuality: "", sleepDuration: "", soreness: "", fingerSoreness: "", stress: "", motivation: "", hrv: "", markerType: "Tindeq", tindeqGripType: "Half Crimp", tindeqIntensity: "Try Hard", gripL: "", gripR: "", tindeqHC50L: "", tindeqHC50R: "", tindeqHCTHL: "", tindeqHCTHR: "", tindeqOH50L: "", tindeqOH50R: "", tindeqOHTHL: "", tindeqOHTHR: "", sessions: [], notes: "" });
-const emptySession = () => ({ sessionType: "", sessionDuration: "", sessionRPE: "", notes: "" });
+const emptySession = () => ({ sessionType: "", sessionDuration: "", sessionRPE: "", notes: "", outdoor: false });
 const emptyClimb = () => ({ route: "", type: "", gradeSport: "", gradeBoulder: "", styles: [], sendType: "", wallAngle: "", rpe: "", attempts: "", moves: "", sent: false, instrument: "Tindeq", tindeqGripType: "Half Crimp", tindeqIntensity: "Try Hard", postHC50L: "", postHC50R: "", postHCTHL: "", postHCTHR: "", postOH50L: "", postOH50R: "", postOHTHL: "", postOHTHR: "", postRFDL: "", postRFDR: "", postGripL: "", postGripR: "", notes: "" });
 const emptyAssess = () => ({ date: "", bodyweight: "", maxHang: "", weightedPullup: "", tindeqGripType: "Half Crimp", tindeqIntensity: "Try Hard", tindeqHC50L: "", tindeqHC50R: "", tindeqHCTHL: "", tindeqHCTHR: "", tindeqOH50L: "", tindeqOH50R: "", tindeqOHTHL: "", tindeqOHTHR: "", tindeqRFDL: "", tindeqRFDR: "", criticalForce: "", gripL: "", gripR: "", shoulderRatio: "", notes: "" });
 const emptyInjury = () => ({ date: "", condition: "", lThumb: 0, lIndex: 0, lMiddle: 0, lRing: 0, lPinky: 0, rThumb: 0, rIndex: 0, rMiddle: 0, rRing: 0, rPinky: 0, elbowL: 0, elbowR: 0, shoulderL: 0, shoulderR: 0, details: "", notes: "" });
@@ -109,7 +109,7 @@ const SPORT_GRADES = ["5.6", "5.7", "5.8", "5.9", "5.10a", "5.10b", "5.10c", "5.
 const BOULDER_GRADES = ["V0", "V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "V9", "V10", "V11", "V12", "V13", "V14", "V15", "V16"];
 const STYLES = ["Crimpy", "Slopey", "Pinchy", "Overhang", "Vertical", "Slab", "Endurance", "Power", "Compression", "Dyno", "Campus", "One Foot"];
 const SEND_TYPES = ["Redpoint", "Flash", "Onsight", "Attempt", "Hang", "Project", "Repeat"];
-const CLIMB_TYPES = ["Bouldering — Power", "Bouldering — Power Endurance", "Sport Climbing — Rope", "Sport Climbing — Circuit", "Hangboard", "Conditioning", "Other"];
+const CLIMB_TYPES = ["Bouldering — Power", "Bouldering — Power Endurance", "Sport Climbing — Rope", "Sport Climbing — Circuit", "Hangboard", "Conditioning", "Antagonist", "Other"];
 const SESSION_TYPES = [...CLIMB_TYPES, "Rest"];
 const WALL_ANGLES = ["Slab", "Vertical", "Slight OH", "Steep OH", "Roof"];
 
@@ -786,6 +786,13 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
               {sess.sessionType !== "Rest" && <div className="flex gap-2 items-end">
                 <Input label="Min" value={sess.sessionDuration} onChange={v => quickUpdateSession(idx, "sessionDuration", v)} type="number" step="10" className="flex-1" />
                 <Input label="RPE" value={sess.sessionRPE} onChange={v => quickUpdateSession(idx, "sessionRPE", v)} type="number" min="1" max="10" className="flex-1" />
+                <div className="flex flex-col gap-1 pb-0.5">
+                  <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Outdoor</label>
+                  <button onClick={() => quickUpdateSession(idx, "outdoor", !sess.outdoor)}
+                    className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold transition-all border ${sess.outdoor ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-lg shadow-emerald-500/10" : "bg-slate-900/60 text-slate-500 border-slate-600/50 hover:border-slate-500"}`}>
+                    {sess.outdoor ? <><Check size={12} /> Yes</> : "No"}
+                  </button>
+                </div>
                 {sLoad > 0 && <div className="pb-2 text-sm font-bold text-sky-400 font-mono whitespace-nowrap">{sLoad} AU</div>}
               </div>}
             </div>;
@@ -886,6 +893,13 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
                 <Input label="RPE (1-10)" value={sess.sessionRPE} onChange={v => updateSess("sessionRPE", v)} type="number" min="1" max="10" />
               </div>
               {sLoad > 0 && <div className="bg-slate-900/50 rounded-lg p-2.5 flex items-center justify-between mb-3"><span className="text-xs text-slate-500">Load</span><span className="text-sm font-bold text-sky-400 font-mono">{sLoad}<span className="text-xs text-slate-600"> AU</span></span></div>}
+              <div className="flex flex-col gap-1 mb-3">
+                <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Outdoor</label>
+                <button onClick={() => updateSess("outdoor", !sess.outdoor)}
+                  className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-semibold transition-all border ${sess.outdoor ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-lg shadow-emerald-500/10" : "bg-slate-900/60 text-slate-500 border-slate-600/50 hover:border-slate-500"}`}>
+                  {sess.outdoor ? <><Check size={14} /> Outdoor</> : "Indoor"}
+                </button>
+              </div>
             </>}
             <Input label="Notes" value={sess.notes} onChange={v => updateSess("notes", v)} placeholder="Session notes..." />
           </Card>;
