@@ -249,17 +249,21 @@ const SentToggle = ({ sent, onChange }) => (
 );
 
 // ─── Profile Setup Screen ───
-function ProfileSetupScreen({ profile, setProfile, settings, onClose }) {
+function ProfileSetupScreen({ profile, setProfile, settings, userId, onClose }) {
   const [form, setForm] = useState({ ...profile });
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const unit = settings?.unit || "lbs";
 
   function save() {
-    setProfile({ ...form, completed: true });
+    const saved = { ...form, completed: true };
+    setProfile(saved);
+    if (userId) dbSet('athlete_profiles', userId, saved);
     if (onClose) onClose();
   }
   function skip() {
-    setProfile(p => ({ ...p, completed: true }));
+    const saved = { ...profile, completed: true };
+    setProfile(saved);
+    if (userId) dbSet('athlete_profiles', userId, saved);
     if (onClose) onClose();
   }
 
@@ -779,7 +783,7 @@ export default function ClimbingTracker() {
     </div>
   );
 
-  if (!profile.completed) return <ProfileSetupScreen profile={profile} setProfile={setProfile} settings={settings} />;
+  if (!profile.completed) return <ProfileSetupScreen profile={profile} setProfile={setProfile} settings={settings} userId={userId} />;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200" style={{ fontFamily: "'DM Sans', sans-serif" }}>
@@ -817,7 +821,7 @@ export default function ClimbingTracker() {
           {navTabs.map(t => <button key={t.id} onClick={() => setTab(t.id)} className={`flex-1 py-2.5 flex flex-col items-center gap-0.5 transition-colors ${tab === t.id ? "text-sky-400" : "text-slate-600 hover:text-slate-400"}`}><t.icon size={20} strokeWidth={tab === t.id ? 2.5 : 1.5} /><span className="text-[10px] font-medium">{t.label}</span></button>)}
         </div>
       </nav>
-      {showProfileEdit && <ProfileSetupScreen profile={profile} setProfile={setProfile} settings={settings} onClose={() => setShowProfileEdit(false)} />}
+      {showProfileEdit && <ProfileSetupScreen profile={profile} setProfile={setProfile} settings={settings} userId={userId} onClose={() => setShowProfileEdit(false)} />}
     </div>
   );
 }
