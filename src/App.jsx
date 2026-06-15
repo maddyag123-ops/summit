@@ -2,37 +2,37 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, Cell, ComposedChart, Area } from "recharts";
 import { Activity, ChevronLeft, ChevronRight, Plus, Trash2, TrendingUp, AlertTriangle, CheckCircle, MinusCircle, Heart, BarChart3, Mountain, Settings, X, ChevronDown, ChevronUp, Check, Download, Upload, Loader, Users } from "lucide-react";
 
-// ─── Async Storage Layer (window.storage) — multi-user via shared storage ───
+// ─── Storage Layer (localStorage) — multi-user via prefixed keys ───
 const DATA_KEYS = ["daily", "climbs", "assess", "injury", "settings"];
 
-async function storageGet(key, fallback, shared = false) {
+function storageGet(key, fallback, shared = false) {
   try {
-    const result = await window.storage.get(key, shared);
-    return result && result.value ? JSON.parse(result.value) : fallback;
+    const val = localStorage.getItem(key);
+    return val ? JSON.parse(val) : fallback;
   } catch { return fallback; }
 }
 
-async function storageSet(key, value, shared = false) {
-  try { await window.storage.set(key, JSON.stringify(value), shared); } catch (e) { console.error("Storage save error:", e); }
+function storageSet(key, value, shared = false) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { console.error("Storage save error:", e); }
 }
 
 // User-prefixed keys for shared storage
 const userKey = (username, dataType) => `${username.toLowerCase().replace(/\s+/g, "-")}:${dataType}`;
 
-// Get/set current user identity (personal, not shared)
-async function getCurrentUser() { return storageGet("summit-user", null, false); }
-async function setCurrentUser(name) { return storageSet("summit-user", name, false); }
+// Get/set current user identity
+function getCurrentUser() { return storageGet("summit-user", null, false); }
+function setCurrentUser(name) { return storageSet("summit-user", name, false); }
 
 // Register a user in the shared user list
-async function registerUser(name) {
-  const users = await storageGet("summit-users", [], true);
+function registerUser(name) {
+  const users = storageGet("summit-users", [], true);
   const clean = name.trim();
   if (!users.includes(clean)) {
     users.push(clean);
-    await storageSet("summit-users", users, true);
+    storageSet("summit-users", users, true);
   }
 }
-async function getAllUsers() { return storageGet("summit-users", [], true); }
+function getAllUsers() { return storageGet("summit-users", [], true); }
 
 const emptyProfile = () => ({
   bodyweight: "", height: "", sex: "", age: "", dominantHand: "",
@@ -40,18 +40,17 @@ const emptyProfile = () => ({
   onsightGradeSport: "", onsightGradeBoulder: "", completed: false,
 });
 
-// Load all data for a specific user from shared storage
-async function loadUserData(username) {
+// Load all data for a specific user from localStorage
+function loadUserData(username) {
   const k = (t) => userKey(username, t);
-  const [daily, climbs, assess, injury, sett, prof] = await Promise.all([
-    storageGet(k("daily"), {}, true),
-    storageGet(k("climbs"), {}, true),
-    storageGet(k("assess"), [], true),
-    storageGet(k("injury"), [], true),
-    storageGet(k("settings"), { instrument: "Tindeq", unit: "lbs" }, true),
-    storageGet(k("profile"), emptyProfile(), true),
-  ]);
-  return { daily, climbs, assess, injury, settings: sett, profile: prof };
+  return {
+    daily:   storageGet(k("daily"),    {},                              true),
+    climbs:  storageGet(k("climbs"),   {},                              true),
+    assess:  storageGet(k("assess"),   [],                              true),
+    injury:  storageGet(k("injury"),   [],                              true),
+    settings:storageGet(k("settings"), { instrument: "Tindeq", unit: "lbs" }, true),
+    profile: storageGet(k("profile"),  emptyProfile(),                  true),
+  };
 }
 
 // ─── Helpers ───
@@ -419,45 +418,42 @@ export default function ClimbingTracker() {
   const [coachViewUser, setCoachViewUser] = useState(null); // null = summary, string = drill-down
   const [coachData, setCoachData] = useState(null); // loaded data for drill-down user
 
-  // Init: migrate old data → Jesse, then load current user
+  // Init: migrate old data, then load current user
   useEffect(() => {
-    async function init() {
-      // One-time migration of old unprefixed data → current user (or "Athlete" fallback)
-      const migrated = await storageGet("summit-migrated", false, false);
-      if (!migrated) {
-        const oldDaily = await storageGet("cpt-daily", null, false);
-        const oldClimbs = await storageGet("cpt-climbs", null, false);
-        const oldAssess = await storageGet("cpt-assess", null, false);
-        const oldInjury = await storageGet("cpt-injury", null, false);
-        const oldSettings = await storageGet("cpt-settings", null, false);
-        if (oldDaily || oldClimbs || oldAssess || oldInjury) {
-          const existingName = await getCurrentUser();
-          const t = existingName || "Athlete";
-          if (oldDaily) await storageSet(userKey(t, "daily"), oldDaily, true);
-          if (oldClimbs) await storageSet(userKey(t, "climbs"), oldClimbs, true);
-          if (oldAssess) await storageSet(userKey(t, "assess"), oldAssess, true);
-          if (oldInjury) await storageSet(userKey(t, "injury"), oldInjury, true);
-          if (oldSettings) await storageSet(userKey(t, "settings"), oldSettings, true);
-          await registerUser(t);
-          await setCurrentUser(t);
-        }
-        await storageSet("summit-migrated", true, false);
+    // One-time migration of old unprefixed data → current user (or "Athlete" fallback)
+    const migrated = storageGet("summit-migrated", false, false);
+    if (!migrated) {
+      const oldDaily = storageGet("cpt-daily", null, false);
+      const oldClimbs = storageGet("cpt-climbs", null, false);
+      const oldAssess = storageGet("cpt-assess", null, false);
+      const oldInjury = storageGet("cpt-injury", null, false);
+      const oldSettings = storageGet("cpt-settings", null, false);
+      if (oldDaily || oldClimbs || oldAssess || oldInjury) {
+        const existingName = getCurrentUser();
+        const t = existingName || "Athlete";
+        if (oldDaily) storageSet(userKey(t, "daily"), oldDaily, true);
+        if (oldClimbs) storageSet(userKey(t, "climbs"), oldClimbs, true);
+        if (oldAssess) storageSet(userKey(t, "assess"), oldAssess, true);
+        if (oldInjury) storageSet(userKey(t, "injury"), oldInjury, true);
+        if (oldSettings) storageSet(userKey(t, "settings"), oldSettings, true);
+        registerUser(t);
+        setCurrentUser(t);
       }
-      // Load current user
-      const saved = await getCurrentUser();
-      if (saved) {
-        setCurrentUserState(saved);
-        await loadDataForUser(saved);
-      } else {
-        setLoading(false);
-      }
+      storageSet("summit-migrated", true, false);
     }
-    init();
+    // Load current user
+    const saved = getCurrentUser();
+    if (saved) {
+      setCurrentUserState(saved);
+      loadDataForUser(saved);
+    } else {
+      setLoading(false);
+    }
   }, []);
 
   // Load data for a user
-  async function loadDataForUser(username) {
-    const data = await loadUserData(username);
+  function loadDataForUser(username) {
+    const data = loadUserData(username);
     setDailyData(data.daily);
     setClimbData(data.climbs);
     setAssessData(data.assess);
@@ -476,18 +472,18 @@ export default function ClimbingTracker() {
   }
 
   // Register and select a user
-  async function selectUser(name) {
+  function selectUser(name) {
     const clean = name.trim();
     if (!clean) return;
-    await setCurrentUser(clean);
-    await registerUser(clean);
+    setCurrentUser(clean);
+    registerUser(clean);
     setCurrentUserState(clean);
     setLoading(true);
-    await loadDataForUser(clean);
+    loadDataForUser(clean);
   }
 
   // Switch user (from settings)
-  async function switchUser() {
+  function switchUser() {
     initialized.current = false;
     setCurrentUserState(null);
     setLoading(false);
@@ -511,7 +507,7 @@ export default function ClimbingTracker() {
   // Load Coach View user list
   useEffect(() => {
     if (tab === "coach") {
-      getAllUsers().then(users => setCoachUsers(users));
+      setCoachUsers(getAllUsers());
     }
   }, [tab]);
 
@@ -1586,9 +1582,9 @@ function DashboardView({ dailyData, ewmaData, datesSorted, assessData, climbData
 function CoachView({ coachUsers, currentUser, loadUserData, coachViewUser, setCoachViewUser, coachData, setCoachData }) {
   const [loadingUser, setLoadingUser] = useState(false);
 
-  const drillDown = async (username) => {
+  const drillDown = (username) => {
     setLoadingUser(true);
-    const data = await loadUserData(username);
+    const data = loadUserData(username);
     setCoachData(data);
     setCoachViewUser(username);
     setLoadingUser(false);
