@@ -34,15 +34,22 @@ async function getAllUsers() {
   return data || [];
 }
 
+const emptyProfile = () => ({
+  bodyweight: "", height: "", sex: "", age: "", dominantHand: "",
+  climbingYears: "", trainingYears: "", discipline: "",
+  onsightGradeSport: "", onsightGradeBoulder: "", completed: false,
+});
+
 async function loadUserData(userId) {
-  const [daily, climbs, assess, injury, sett] = await Promise.all([
+  const [daily, climbs, assess, injury, sett, prof] = await Promise.all([
     dbGet('daily_logs', userId, {}),
     dbGet('climb_logs', userId, {}),
     dbGet('assessments', userId, []),
     dbGet('injury_logs', userId, []),
     dbGet('settings', userId, { instrument: 'Tindeq', unit: 'lbs' }),
+    dbGet('athlete_profiles', userId, emptyProfile()),
   ]);
-  return { daily, climbs, assess, injury, settings: sett };
+  return { daily, climbs, assess, injury, settings: sett, profile: prof };
 }
 
 // ─── Helpers ───
@@ -241,6 +248,139 @@ const SentToggle = ({ sent, onChange }) => (
   </div>
 );
 
+// ─── Profile Setup Screen ───
+function ProfileSetupScreen({ profile, setProfile, settings, onClose }) {
+  const [form, setForm] = useState({ ...profile });
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const unit = settings?.unit || "lbs";
+
+  function save() {
+    setProfile({ ...form, completed: true });
+    if (onClose) onClose();
+  }
+  function skip() {
+    setProfile(p => ({ ...p, completed: true }));
+    if (onClose) onClose();
+  }
+
+  const Toggle = ({ field, options }) => (
+    <div className="flex gap-1 bg-slate-900/60 rounded-lg p-0.5 border border-slate-700/40">
+      {options.map(opt => (
+        <button key={opt} onClick={() => set(field, form[field] === opt ? "" : opt)}
+          className={`flex-1 py-1.5 px-1 rounded-md text-[10px] font-semibold transition-all ${form[field] === opt ? "bg-sky-500/20 text-sky-300 border border-sky-500/30" : "text-slate-500 hover:text-slate-300"}`}>{opt}</button>
+      ))}
+    </div>
+  );
+
+  const content = (
+    <div className="space-y-6 px-4 py-6 max-w-md w-full mx-auto">
+      <div className="text-center space-y-1">
+        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-sky-500 to-emerald-500 flex items-center justify-center mx-auto mb-3"><Mountain size={24} className="text-white" /></div>
+        <h2 className="text-xl font-bold text-slate-200">Set up your profile</h2>
+        <p className="text-xs text-slate-500">All fields optional — you can edit this anytime in Settings.</p>
+      </div>
+
+      <div className="space-y-4">
+        <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Physical Stats</div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Bodyweight ({unit})</label>
+            <p className="text-[10px] text-slate-600 mb-1.5">Used to personalise protein, carb, and hydration targets</p>
+            <input type="number" value={form.bodyweight} onChange={e => set("bodyweight", e.target.value)}
+              className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 appearance-none" placeholder="—" />
+          </div>
+          <div>
+            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Height (cm)</label>
+            <p className="text-[10px] text-slate-600 mb-1.5">Used for BMI context in recovery nudges</p>
+            <input type="number" value={form.height} onChange={e => set("height", e.target.value)}
+              className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 appearance-none" placeholder="—" />
+          </div>
+        </div>
+        <div>
+          <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">Sex</label>
+          <Toggle field="sex" options={["Male", "Female", "Prefer not to say"]} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">Age</label>
+            <input type="number" value={form.age} onChange={e => set("age", e.target.value)}
+              className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 appearance-none" placeholder="—" />
+          </div>
+          <div>
+            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Dominant Hand</label>
+            <p className="text-[10px] text-slate-600 mb-1.5">Helps interpret left/right force asymmetries in your force marker</p>
+            <Toggle field="dominantHand" options={["Left", "Right"]} />
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Climbing Background</div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">Years Climbing</label>
+            <input type="number" value={form.climbingYears} onChange={e => set("climbingYears", e.target.value)}
+              className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 appearance-none" placeholder="—" />
+          </div>
+          <div>
+            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Years of Structured Training</label>
+            <p className="text-[10px] text-slate-600 mb-1.5">Years of structured training programs, separate from general climbing</p>
+            <input type="number" value={form.trainingYears} onChange={e => set("trainingYears", e.target.value)}
+              className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 appearance-none" placeholder="—" />
+          </div>
+        </div>
+        <div>
+          <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">Primary Discipline</label>
+          <Toggle field="discipline" options={["Bouldering", "Sport", "Trad", "All"]} />
+        </div>
+        <p className="text-[10px] text-slate-600">Grades are subjective interpretations of physical challenge, but let's track them 🙂</p>
+        <div>
+          <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Onsight Grade — Sport</label>
+          <p className="text-[10px] text-slate-600 mb-1.5">Hardest grade you can climb first try with no beta</p>
+          <select value={form.onsightGradeSport} onChange={e => set("onsightGradeSport", e.target.value)}
+            className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 appearance-none">
+            <option value="">Select...</option>
+            {SPORT_GRADES.map((g, i) => <option key={g} value={g} style={{ background: i % 2 === 0 ? "#1e293b" : "#0f172a" }}>{g}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Onsight Grade — Boulder</label>
+          <p className="text-[10px] text-slate-600 mb-1.5">Hardest grade you can climb first try with no beta</p>
+          <select value={form.onsightGradeBoulder} onChange={e => set("onsightGradeBoulder", e.target.value)}
+            className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 appearance-none">
+            <option value="">Select...</option>
+            {BOULDER_GRADES.map((g, i) => <option key={g} value={g} style={{ background: i % 2 === 0 ? "#1e293b" : "#0f172a" }}>{g}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div className="space-y-2 pt-2">
+        <button onClick={save} className="w-full py-3 bg-sky-500 hover:bg-sky-600 text-white rounded-xl text-sm font-semibold transition-all">Save Profile</button>
+        {!onClose && <button onClick={skip} className="w-full py-2 text-slate-500 hover:text-slate-300 text-xs transition-all">Skip for now</button>}
+      </div>
+    </div>
+  );
+
+  if (onClose) return (
+    <div className="fixed inset-0 z-[100] bg-slate-950/90 backdrop-blur-sm flex items-start justify-center overflow-y-auto" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+      <div className="w-full max-w-md mx-auto my-4">
+        <div className="flex items-center justify-between px-4 pt-4 mb-2">
+          <span className="text-sm font-semibold text-slate-300">Edit Profile</span>
+          <button onClick={onClose}><X size={18} className="text-slate-500" /></button>
+        </div>
+        {content}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-slate-950 overflow-y-auto" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
+      {content}
+    </div>
+  );
+}
+
 // ─── Main App ───
 export default function ClimbingTracker() {
   const [loading, setLoading] = useState(true);
@@ -260,7 +400,9 @@ export default function ClimbingTracker() {
   const [assessData, setAssessData] = useState([]);
   const [injuryData, setInjuryData] = useState([]);
   const [settings, setSettings] = useState({ instrument: "Tindeq", unit: "lbs" });
+  const [profile, setProfile] = useState(emptyProfile());
   const [showSettings, setShowSettings] = useState(false);
+  const [showProfileEdit, setShowProfileEdit] = useState(false);
   const [dataStatus, setDataStatus] = useState(null);
   const initialized = useRef(false);
   const saveTimers = useRef({});
@@ -320,6 +462,7 @@ export default function ClimbingTracker() {
       setAssessData(data.assess);
       setInjuryData(data.injury);
       setSettings(data.settings);
+      setProfile(data.profile);
       initialized.current = true;
     } catch {
       // Offline or slow — open with empty local state; data will sync when
@@ -351,7 +494,7 @@ export default function ClimbingTracker() {
   }
 
   // Debounced save — batches rapid edits into a single Supabase upsert per table
-  const TABLE_MAP = { daily: "daily_logs", climbs: "climb_logs", assess: "assessments", injury: "injury_logs", settings: "settings" };
+  const TABLE_MAP = { daily: "daily_logs", climbs: "climb_logs", assess: "assessments", injury: "injury_logs", settings: "settings", profile: "athlete_profiles" };
   const debouncedSave = useCallback((key, value) => {
     if (!initialized.current || !userId) return;
     const table = TABLE_MAP[key]; if (!table) return;
@@ -365,6 +508,7 @@ export default function ClimbingTracker() {
   useEffect(() => { debouncedSave("assess", assessData); }, [assessData, debouncedSave]);
   useEffect(() => { debouncedSave("injury", injuryData); }, [injuryData, debouncedSave]);
   useEffect(() => { debouncedSave("settings", settings); }, [settings, debouncedSave]);
+  useEffect(() => { debouncedSave("profile", profile); }, [profile, debouncedSave]);
 
   // Load Coach View user list
   useEffect(() => {
@@ -629,6 +773,8 @@ export default function ClimbingTracker() {
     </div>
   );
 
+  if (!profile.completed) return <ProfileSetupScreen profile={profile} setProfile={setProfile} settings={settings} />;
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200" style={{ fontFamily: "'DM Sans', sans-serif" }}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
@@ -640,7 +786,7 @@ export default function ClimbingTracker() {
       </header>
       {showSettings && <div className="max-w-2xl mx-auto px-4 py-4 bg-slate-900/50 border-b border-slate-800/50 space-y-4">
         <div className="flex items-center justify-between"><span className="text-sm font-semibold text-slate-300">Settings</span><button onClick={() => setShowSettings(false)}><X size={16} className="text-slate-500" /></button></div>
-        <div><div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">Logged in as</div><div className="flex items-center justify-between bg-slate-900/60 rounded-lg px-3 py-2 border border-slate-700/40"><span className="text-sm font-semibold text-slate-200">{displayName}</span><button onClick={handleSignOut} className="text-[10px] text-sky-400 hover:text-sky-300 font-semibold">Sign Out</button></div></div>
+        <div><div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">Logged in as</div><div className="flex items-center justify-between bg-slate-900/60 rounded-lg px-3 py-2 border border-slate-700/40"><span className="text-sm font-semibold text-slate-200">{displayName}</span><div className="flex gap-3"><button onClick={() => { setShowSettings(false); setShowProfileEdit(true); }} className="text-[10px] text-emerald-400 hover:text-emerald-300 font-semibold">Edit Profile</button><button onClick={handleSignOut} className="text-[10px] text-sky-400 hover:text-sky-300 font-semibold">Sign Out</button></div></div></div>
         <div><div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">Default Instrument</div><InstrumentToggle value={settings.instrument} onChange={v => setSettings(p => ({ ...p, instrument: v }))} /></div>
         <div><div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">Units</div><div className="flex gap-1 bg-slate-900/60 rounded-lg p-0.5 border border-slate-700/40">{["lbs", "kg"].map(u => <button key={u} onClick={() => setSettings(p => ({ ...p, unit: u }))} className={`flex-1 py-1.5 px-2 rounded-md text-[10px] font-semibold transition-all ${settings.unit === u ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30" : "text-slate-500 hover:text-slate-300"}`}>{u}</button>)}</div></div>
         <div><div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">Data Management</div>
@@ -665,6 +811,7 @@ export default function ClimbingTracker() {
           {navTabs.map(t => <button key={t.id} onClick={() => setTab(t.id)} className={`flex-1 py-2.5 flex flex-col items-center gap-0.5 transition-colors ${tab === t.id ? "text-sky-400" : "text-slate-600 hover:text-slate-400"}`}><t.icon size={20} strokeWidth={tab === t.id ? 2.5 : 1.5} /><span className="text-[10px] font-medium">{t.label}</span></button>)}
         </div>
       </nav>
+      {showProfileEdit && <ProfileSetupScreen profile={profile} setProfile={setProfile} settings={settings} onClose={() => setShowProfileEdit(false)} />}
     </div>
   );
 }
