@@ -98,8 +98,8 @@ const WELLNESS_ITEMS = [
 ];
 
 // ─── Defaults ───
-const emptyDay = () => ({ sleepQuality: "", sleepDuration: "", soreness: "", fingerSoreness: "", stress: "", motivation: "", hrv: "", markerType: "Tindeq", tindeqGripType: "Half Crimp", tindeqIntensity: "Try Hard", gripL: "", gripR: "", tindeqHC50L: "", tindeqHC50R: "", tindeqHCTHL: "", tindeqHCTHR: "", tindeqOH50L: "", tindeqOH50R: "", tindeqOHTHL: "", tindeqOHTHR: "", sessions: [], notes: "" });
-const emptySession = () => ({ sessionType: "", sessionDuration: "", sessionRPE: "", notes: "", outdoor: false, conditions: "" });
+const emptyDay = () => ({ sleepQuality: "", sleepDuration: "", soreness: "", fingerSoreness: "", stress: "", motivation: "", conditions: "", hrv: "", markerType: "Tindeq", tindeqGripType: "Half Crimp", tindeqIntensity: "Try Hard", gripL: "", gripR: "", tindeqHC50L: "", tindeqHC50R: "", tindeqHCTHL: "", tindeqHCTHR: "", tindeqOH50L: "", tindeqOH50R: "", tindeqOHTHL: "", tindeqOHTHR: "", sessions: [], notes: "" });
+const emptySession = () => ({ sessionType: "", sessionDuration: "", sessionRPE: "", notes: "", outdoor: false });
 const emptyClimb = () => ({ route: "", type: "", gradeSport: "", gradeBoulder: "", styles: [], sendType: "", wallAngle: "", rpe: "", attempts: "", moves: "", sent: false, instrument: "Tindeq", tindeqGripType: "Half Crimp", tindeqIntensity: "Try Hard", postHC50L: "", postHC50R: "", postHCTHL: "", postHCTHR: "", postOH50L: "", postOH50R: "", postOHTHL: "", postOHTHR: "", postRFDL: "", postRFDR: "", postGripL: "", postGripR: "", notes: "" });
 const emptyAssess = () => ({ date: "", bodyweight: "", maxHang: "", weightedPullup: "", tindeqGripType: "Half Crimp", tindeqIntensity: "Try Hard", tindeqHC50L: "", tindeqHC50R: "", tindeqHCTHL: "", tindeqHCTHR: "", tindeqOH50L: "", tindeqOH50R: "", tindeqOHTHL: "", tindeqOHTHR: "", tindeqRFDL: "", tindeqRFDR: "", criticalForce: "", gripL: "", gripR: "", shoulderRatio: "", notes: "" });
 const emptyInjury = () => ({ date: "", condition: "", lThumb: 0, lIndex: 0, lMiddle: 0, lRing: 0, lPinky: 0, rThumb: 0, rIndex: 0, rMiddle: 0, rRing: 0, rPinky: 0, elbowL: 0, elbowR: 0, shoulderL: 0, shoulderR: 0, details: "", notes: "" });
@@ -764,6 +764,15 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
           <div className="mt-4 pt-3 border-t border-slate-700/30">
             <Input label="Morning HRV (ms, optional)" value={day.hrv} onChange={v => updateDay(selectedDate, "hrv", v)} type="number" placeholder="e.g., 65" />
           </div>
+          <div className="mt-4 pt-3 border-t border-slate-700/30">
+            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5 block">Today's Conditions <span className="text-slate-600">(optional)</span></label>
+            <div className="flex gap-1 bg-slate-900/60 rounded-lg p-0.5 border border-slate-700/40">
+              {["Hot", "Warm", "Cool", "Cold"].map(opt => (
+                <button key={opt} onClick={() => updateDay(selectedDate, "conditions", day.conditions === opt ? "" : opt)}
+                  className={`flex-1 py-1.5 px-1 rounded-md text-[10px] font-semibold transition-all ${day.conditions === opt ? `${CONDITION_COLORS[opt]} border` : "text-slate-500 hover:text-slate-300"}`}>{opt}</button>
+              ))}
+            </div>
+          </div>
         </Card>
 
         {/* Quick session */}
@@ -798,15 +807,6 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
                 </div>}
                 {sLoad > 0 && <div className="pb-2 text-sm font-bold text-sky-400 font-mono whitespace-nowrap">{sLoad} AU</div>}
               </div>}
-              {CLIMBING_SESSION_TYPES.has(sess.sessionType) && <div className="mt-2">
-                <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1 block">Conditions</label>
-                <div className="flex gap-1 bg-slate-900/60 rounded-lg p-0.5 border border-slate-700/40">
-                  {["Hot", "Warm", "Cool", "Cold"].map(opt => (
-                    <button key={opt} onClick={() => quickUpdateSession(idx, "conditions", sess.conditions === opt ? "" : opt)}
-                      className={`flex-1 py-1.5 px-1 rounded-md text-[10px] font-semibold transition-all ${sess.conditions === opt ? `${CONDITION_COLORS[opt]} border` : "text-slate-500 hover:text-slate-300"}`}>{opt}</button>
-                  ))}
-                </div>
-              </div>}
             </div>;
           })}
           {daySessions.length > 0 && daySessions[0].sessionType !== "Rest" && (
@@ -831,6 +831,15 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
           <WellnessRow label="Finger Soreness" value={day.fingerSoreness} onChange={v => updateDay(selectedDate, "fingerSoreness", v)} lowLabel="Extremely sore" highLabel="No soreness" />
           <WellnessRow label="Stress" value={day.stress} onChange={v => updateDay(selectedDate, "stress", v)} lowLabel="Extremely stressed" highLabel="No stress" />
           <WellnessRow label="Motivation" value={day.motivation} onChange={v => updateDay(selectedDate, "motivation", v)} lowLabel="Not motivated at all" highLabel="Extremely motivated" />
+        </div>
+        <div className="mt-4 pt-3 border-t border-slate-700/30">
+          <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5 block">Today's Conditions <span className="text-slate-600">(optional)</span></label>
+          <div className="flex gap-1 bg-slate-900/60 rounded-lg p-0.5 border border-slate-700/40">
+            {["Hot", "Warm", "Cool", "Cold"].map(opt => (
+              <button key={opt} onClick={() => updateDay(selectedDate, "conditions", day.conditions === opt ? "" : opt)}
+                className={`flex-1 py-1.5 px-1 rounded-md text-[10px] font-semibold transition-all ${day.conditions === opt ? `${CONDITION_COLORS[opt]} border` : "text-slate-500 hover:text-slate-300"}`}>{opt}</button>
+            ))}
+          </div>
         </div>
       </Card>}
       {section === "marker" && <Card>
