@@ -464,6 +464,13 @@ export default function ClimbingTracker() {
     setInjuryData(data.injury);
     setSettings(data.settings);
     setProfile(data.profile);
+    // Migrate discipline from old string format to array
+    if (typeof data.profile.discipline === "string") {
+      const d = data.profile.discipline;
+      const migrated = { ...data.profile, discipline: d === "All" ? ["Bouldering", "Sport", "Trad", "Speed"] : d ? [d] : [] };
+      setProfile(migrated);
+      storageSet(userKey(username, "profile"), migrated, true);
+    }
     initialized.current = true;
     setLoading(false);
   }
