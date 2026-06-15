@@ -36,7 +36,7 @@ async function getAllUsers() {
 
 const emptyProfile = () => ({
   bodyweight: "", height: "", sex: "", age: "", dominantHand: "",
-  climbingYears: "", trainingYears: "", discipline: "",
+  climbingYears: "", trainingYears: "", discipline: [],
   onsightGradeSport: "", onsightGradeBoulder: "", completed: false,
 });
 
@@ -331,7 +331,13 @@ function ProfileSetupScreen({ profile, setProfile, settings, onClose }) {
         </div>
         <div>
           <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">Primary Discipline</label>
-          <Toggle field="discipline" options={["Bouldering", "Sport", "Trad", "All"]} />
+          <div className="flex flex-wrap gap-1.5">
+            {["Bouldering", "Sport", "Trad", "Speed"].map(opt => {
+              const active = (form.discipline || []).includes(opt);
+              return <button key={opt} onClick={() => set("discipline", active ? form.discipline.filter(x => x !== opt) : [...(form.discipline || []), opt])}
+                className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border transition-all ${active ? "bg-sky-500/25 text-sky-300 border-sky-500/40" : "bg-slate-800/60 text-slate-500 border-slate-700/40 hover:border-slate-600"}`}>{opt}</button>;
+            })}
+          </div>
         </div>
         <p className="text-[10px] text-slate-600">Grades are subjective interpretations of physical challenge, but let's track them 🙂</p>
         <div>
