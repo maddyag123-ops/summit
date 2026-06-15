@@ -101,7 +101,7 @@ const WELLNESS_ITEMS = [
 
 // ─── Defaults ───
 const emptyDay = () => ({ sleepQuality: "", sleepDuration: "", soreness: "", fingerSoreness: "", stress: "", motivation: "", hrv: "", markerType: "Tindeq", tindeqGripType: "Half Crimp", tindeqIntensity: "Try Hard", gripL: "", gripR: "", tindeqHC50L: "", tindeqHC50R: "", tindeqHCTHL: "", tindeqHCTHR: "", tindeqOH50L: "", tindeqOH50R: "", tindeqOHTHL: "", tindeqOHTHR: "", sessions: [], notes: "" });
-const emptySession = () => ({ sessionType: "", sessionDuration: "", sessionRPE: "", notes: "", outdoor: false });
+const emptySession = () => ({ sessionType: "", sessionDuration: "", sessionRPE: "", notes: "", outdoor: false, conditions: "" });
 const emptyClimb = () => ({ route: "", type: "", gradeSport: "", gradeBoulder: "", styles: [], sendType: "", wallAngle: "", rpe: "", attempts: "", moves: "", sent: false, instrument: "Tindeq", tindeqGripType: "Half Crimp", tindeqIntensity: "Try Hard", postHC50L: "", postHC50R: "", postHCTHL: "", postHCTHR: "", postOH50L: "", postOH50R: "", postOHTHL: "", postOHTHR: "", postRFDL: "", postRFDR: "", postGripL: "", postGripR: "", notes: "" });
 const emptyAssess = () => ({ date: "", bodyweight: "", maxHang: "", weightedPullup: "", tindeqGripType: "Half Crimp", tindeqIntensity: "Try Hard", tindeqHC50L: "", tindeqHC50R: "", tindeqHCTHL: "", tindeqHCTHR: "", tindeqOH50L: "", tindeqOH50R: "", tindeqOHTHL: "", tindeqOHTHR: "", tindeqRFDL: "", tindeqRFDR: "", criticalForce: "", gripL: "", gripR: "", shoulderRatio: "", notes: "" });
 const emptyInjury = () => ({ date: "", condition: "", lThumb: 0, lIndex: 0, lMiddle: 0, lRing: 0, lPinky: 0, rThumb: 0, rIndex: 0, rMiddle: 0, rRing: 0, rPinky: 0, elbowL: 0, elbowR: 0, shoulderL: 0, shoulderR: 0, details: "", notes: "" });
@@ -114,6 +114,8 @@ const SEND_TYPES = ["Redpoint", "Flash", "Onsight", "Attempt", "Hang", "Project"
 const CLIMB_TYPES = ["Bouldering — Power", "Bouldering — Power Endurance", "Sport Climbing — Rope", "Sport Climbing — Circuit", "Hangboard", "Conditioning", "Antagonist", "Cardio", "Other"];
 const SESSION_TYPES = [...CLIMB_TYPES, "Rest"];
 const OUTDOOR_SESSION_TYPES = new Set(["Bouldering — Power", "Bouldering — Power Endurance", "Sport Climbing — Rope"]);
+const CONDITION_COLORS = { Hot: "bg-amber-500/20 text-amber-300 border-amber-500/30", Warm: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30", Cool: "bg-sky-500/20 text-sky-300 border-sky-500/30", Cold: "bg-violet-500/20 text-violet-300 border-violet-500/30" };
+const CLIMBING_SESSION_TYPES = new Set(["Bouldering — Power", "Bouldering — Power Endurance", "Sport Climbing — Rope", "Sport Climbing — Circuit"]);
 const WALL_ANGLES = ["Slab", "Vertical", "Slight OH", "Steep OH", "Roof"];
 
 // ─── UI Components ───
@@ -740,6 +742,15 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
                   </button>
                 </div>}
                 {sLoad > 0 && <div className="pb-2 text-sm font-bold text-sky-400 font-mono whitespace-nowrap">{sLoad} AU</div>}
+              </div>}
+              {CLIMBING_SESSION_TYPES.has(sess.sessionType) && <div className="mt-2">
+                <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1 block">Conditions</label>
+                <div className="flex gap-1 bg-slate-900/60 rounded-lg p-0.5 border border-slate-700/40">
+                  {["Hot", "Warm", "Cool", "Cold"].map(opt => (
+                    <button key={opt} onClick={() => quickUpdateSession(idx, "conditions", sess.conditions === opt ? "" : opt)}
+                      className={`flex-1 py-1.5 px-1 rounded-md text-[10px] font-semibold transition-all ${sess.conditions === opt ? `${CONDITION_COLORS[opt]} border` : "text-slate-500 hover:text-slate-300"}`}>{opt}</button>
+                  ))}
+                </div>
               </div>}
             </div>;
           })}
