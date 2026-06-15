@@ -109,8 +109,9 @@ const SPORT_GRADES = ["5.6", "5.7", "5.8", "5.9", "5.10a", "5.10b", "5.10c", "5.
 const BOULDER_GRADES = ["V0", "V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "V9", "V10", "V11", "V12", "V13", "V14", "V15", "V16"];
 const STYLES = ["Crimpy", "Slopey", "Pinchy", "Overhang", "Vertical", "Slab", "Endurance", "Power", "Compression", "Dyno", "Campus", "One Foot"];
 const SEND_TYPES = ["Redpoint", "Flash", "Onsight", "Attempt", "Hang", "Project", "Repeat"];
-const CLIMB_TYPES = ["Bouldering — Power", "Bouldering — Power Endurance", "Sport Climbing — Rope", "Sport Climbing — Circuit", "Hangboard", "Conditioning", "Antagonist", "Other"];
+const CLIMB_TYPES = ["Bouldering — Power", "Bouldering — Power Endurance", "Sport Climbing — Rope", "Sport Climbing — Circuit", "Hangboard", "Conditioning", "Antagonist", "Cardio", "Other"];
 const SESSION_TYPES = [...CLIMB_TYPES, "Rest"];
+const OUTDOOR_SESSION_TYPES = new Set(["Bouldering — Power", "Bouldering — Power Endurance", "Sport Climbing — Rope"]);
 const WALL_ANGLES = ["Slab", "Vertical", "Slight OH", "Steep OH", "Roof"];
 
 // ─── UI Components ───
@@ -134,7 +135,7 @@ const Select = ({ label, value, onChange, options, placeholder = "Select...", cl
     <select value={value} onChange={e => onChange(e.target.value)}
       className="bg-slate-900/60 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 appearance-none transition-all">
       <option value="">{placeholder}</option>
-      {options.map(o => <option key={o} value={o}>{o}</option>)}
+      {options.map((o, i) => <option key={o} value={o} style={{ background: i % 2 === 0 ? "#1e293b" : "#0f172a" }}>{o}</option>)}
     </select>
   </div>
 );
@@ -786,13 +787,13 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
               {sess.sessionType !== "Rest" && <div className="flex gap-2 items-end">
                 <Input label="Min" value={sess.sessionDuration} onChange={v => quickUpdateSession(idx, "sessionDuration", v)} type="number" step="10" className="flex-1" />
                 <Input label="RPE" value={sess.sessionRPE} onChange={v => quickUpdateSession(idx, "sessionRPE", v)} type="number" min="1" max="10" className="flex-1" />
-                <div className="flex flex-col gap-1 pb-0.5">
+                {OUTDOOR_SESSION_TYPES.has(sess.sessionType) && <div className="flex flex-col gap-1 pb-0.5">
                   <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Outdoor</label>
                   <button onClick={() => quickUpdateSession(idx, "outdoor", !sess.outdoor)}
                     className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold transition-all border ${sess.outdoor ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-lg shadow-emerald-500/10" : "bg-slate-900/60 text-slate-500 border-slate-600/50 hover:border-slate-500"}`}>
                     {sess.outdoor ? <><Check size={12} /> Yes</> : "No"}
                   </button>
-                </div>
+                </div>}
                 {sLoad > 0 && <div className="pb-2 text-sm font-bold text-sky-400 font-mono whitespace-nowrap">{sLoad} AU</div>}
               </div>}
             </div>;
@@ -893,13 +894,13 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
                 <Input label="RPE (1-10)" value={sess.sessionRPE} onChange={v => updateSess("sessionRPE", v)} type="number" min="1" max="10" />
               </div>
               {sLoad > 0 && <div className="bg-slate-900/50 rounded-lg p-2.5 flex items-center justify-between mb-3"><span className="text-xs text-slate-500">Load</span><span className="text-sm font-bold text-sky-400 font-mono">{sLoad}<span className="text-xs text-slate-600"> AU</span></span></div>}
-              <div className="flex flex-col gap-1 mb-3">
+              {OUTDOOR_SESSION_TYPES.has(sess.sessionType) && <div className="flex flex-col gap-1 mb-3">
                 <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Outdoor</label>
                 <button onClick={() => updateSess("outdoor", !sess.outdoor)}
                   className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-semibold transition-all border ${sess.outdoor ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-lg shadow-emerald-500/10" : "bg-slate-900/60 text-slate-500 border-slate-600/50 hover:border-slate-500"}`}>
                   {sess.outdoor ? <><Check size={14} /> Outdoor</> : "Indoor"}
                 </button>
-              </div>
+              </div>}
             </>}
             <Input label="Notes" value={sess.notes} onChange={v => updateSess("notes", v)} placeholder="Session notes..." />
           </Card>;
