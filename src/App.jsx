@@ -473,6 +473,7 @@ export default function ClimbingTracker() {
       setInjuryData(data.injury);
       setSettings(data.settings);
       setProfile(data.profile);
+      console.log('Profile loaded:', data.profile);
       // Migrate discipline from old string format to array
       if (typeof data.profile.discipline === "string") {
         const d = data.profile.discipline;
