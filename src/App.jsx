@@ -47,7 +47,7 @@ async function loadUserData(userId) {
     dbGet('assessments', userId, []),
     dbGet('injury_logs', userId, []),
     dbGet('settings', userId, { instrument: 'Tindeq', unit: 'lbs' }),
-    dbGet('athlete_profiles', userId, emptyProfile()),
+    dbGet('profiles', userId, emptyProfile()),
   ]);
   return { daily, climbs, assess, injury, settings: sett, profile: prof };
 }
@@ -257,13 +257,13 @@ function ProfileSetupScreen({ profile, setProfile, settings, userId, onClose }) 
   function save() {
     const saved = { ...form, completed: true };
     setProfile(saved);
-    if (userId) dbSet('athlete_profiles', userId, saved);
+    if (userId) dbSet('profiles', userId, saved);
     if (onClose) onClose();
   }
   function skip() {
     const saved = { ...profile, completed: true };
     setProfile(saved);
-    if (userId) dbSet('athlete_profiles', userId, saved);
+    if (userId) dbSet('profiles', userId, saved);
     if (onClose) onClose();
   }
 
@@ -478,7 +478,7 @@ export default function ClimbingTracker() {
         const d = data.profile.discipline;
         const migrated = { ...data.profile, discipline: d === "All" ? ["Bouldering", "Sport", "Trad", "Speed"] : d ? [d] : [] };
         setProfile(migrated);
-        dbSet('athlete_profiles', uid, migrated);
+        dbSet('profiles', uid, migrated);
       }
       initialized.current = true;
     } catch {
@@ -511,7 +511,7 @@ export default function ClimbingTracker() {
   }
 
   // Debounced save — batches rapid edits into a single Supabase upsert per table
-  const TABLE_MAP = { daily: "daily_logs", climbs: "climb_logs", assess: "assessments", injury: "injury_logs", settings: "settings", profile: "athlete_profiles" };
+  const TABLE_MAP = { daily: "daily_logs", climbs: "climb_logs", assess: "assessments", injury: "injury_logs", settings: "settings", profile: "profiles" };
   const debouncedSave = useCallback((key, value) => {
     if (!initialized.current || !userId) return;
     const table = TABLE_MAP[key]; if (!table) return;
