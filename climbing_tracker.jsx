@@ -37,7 +37,8 @@ async function getAllUsers() { return storageGet("summit-users", [], true); }
 const emptyProfile = () => ({
   bodyweight: "", height: "", sex: "", age: "", dominantHand: "",
   climbingYears: "", trainingYears: "", discipline: [],
-  onsightGradeSport: "", onsightGradeBoulder: "", completed: false,
+  onsightGradeSport: "", flashGradeBoulder: "", completed: false,
+  nudgeState: {},
 });
 
 // Load all data for a specific user from shared storage
@@ -358,9 +359,9 @@ function ProfileSetupScreen({ profile, setProfile, settings, currentUser, onClos
           </select>
         </div>
         <div>
-          <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Onsight Grade — Boulder</label>
+          <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Flash Grade — Boulder</label>
           <p className="text-[10px] text-slate-600 mb-1.5">Hardest grade you can climb first try with no beta</p>
-          <select value={form.onsightGradeBoulder} onChange={e => set("onsightGradeBoulder", e.target.value)}
+          <select value={form.flashGradeBoulder} onChange={e => set("flashGradeBoulder", e.target.value)}
             className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 appearance-none">
             <option value="">Select...</option>
             {BOULDER_GRADES.map((g, i) => <option key={g} value={g} style={{ background: i % 2 === 0 ? "#1e293b" : "#0f172a" }}>{g}</option>)}
@@ -763,7 +764,7 @@ export default function ClimbingTracker() {
         </div>
       </div>}
       <main className="max-w-2xl mx-auto px-4 py-4 pb-24">
-        {tab === "today" && <TodayView {...{ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, sessionLoad, todayEWMA, settings, dailyData, daySessions, setDailyData }} />}
+        {tab === "today" && <TodayView {...{ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, sessionLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted }} />}
         {tab === "climbs" && <ClimbView {...{ selectedDate, shiftDate, climbData, setClimbData, settings, dailyData, setDailyData }} />}
         {tab === "assess" && <AssessView {...{ assessData, setAssessData, settings }} />}
         {tab === "injury" && <InjuryView {...{ injuryData, setInjuryData, dailyData, ewmaData, datesSorted }} />}
@@ -781,7 +782,68 @@ export default function ClimbingTracker() {
 }
 
 // ─── TODAY VIEW ───
-function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, sessionLoad, todayEWMA, settings, dailyData, daySessions, setDailyData }) {
+const nudgeVariants = {
+  'rest-high-load': [
+    "EWMA ratio is elevated and multiple markers are flagged — full rest today lets adaptation catch up to the load you've put in.",
+    "Load has been running hot for several days. The fitness gains happen during recovery, not the next session — today is a rest day.",
+  ],
+  'hydration-force-drop': [
+    "Force marker has dropped several days running. Even mild fluid loss measurably reduces grip strength — check your daily intake.",
+    "A multi-day force decline often tracks with hydration status before anything else. Worth ruling out before assuming fatigue.",
+  ],
+  'nutrition-rest-day': [
+    "Rest days are still active recovery for connective tissue — protein intake today matters as much as on a training day.",
+    "Tendon repair continues on rest days. Don't let today's protein intake drop just because you're not climbing.",
+  ],
+  'rest-deload': [
+    "Load is sitting below your usual baseline — a natural deload window. Good time to catch up on sleep debt.",
+    "You're in a lighter load phase right now. Fitness built over weeks doesn't disappear in a few light days — let recovery lead.",
+  ],
+  'rest-low-sleep': [
+    "Short sleep affects grip strength and reaction time more than most athletes expect. Consider trimming intensity today, not just volume.",
+    "Sleep debt compounds. If you climb today, technique-focused volume is a safer bet than max effort attempts.",
+  ],
+  'nutrition-carb-window': [
+    "Yesterday's session was a big one — carbohydrate intake today supports glycogen recovery during this window.",
+    "Heavy load yesterday draws down glycogen stores. Today's carb intake matters more than usual for tomorrow's session.",
+  ],
+  'hydration-load-spike': [
+    "Training load is trending above baseline. Fluid needs scale with load — make sure intake is keeping pace.",
+    "When load climbs, hydration demands climb with it. Don't let intake stay flat while volume goes up.",
+  ],
+};
+
+function getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedDate, settings, profile }) {
+  const now = new Date();
+  const nudgeState = profile?.nudgeState || {};
+  const triggers = [
+    { key: 'rest-high-load',      active: todayEWMA.ratio > 1.3 && readiness.flag === "REST" },
+    { key: 'hydration-force-drop', active: (() => {
+        const mt = day.markerType || settings.instrument;
+        const recent = datesSorted.filter(d => d < selectedDate).slice(-4).map(d => dayMarkerAvg(dailyData[d], mt)).filter(v => v > 0);
+        return recent.length >= 3 && recent[recent.length - 1] < recent[0] * 0.92;
+      })() },
+    { key: 'nutrition-rest-day',  active: day.sessions?.length > 0 && day.sessions.every(s => s.sessionType === "Rest") },
+    { key: 'rest-deload',         active: todayEWMA.chronic > 0 && todayEWMA.ratio < 0.7 },
+    { key: 'rest-low-sleep',      active: Number(day.sleepDuration) > 0 && Number(day.sleepDuration) < 6 },
+    { key: 'nutrition-carb-window', active: (() => {
+        const yesterday = datesSorted[datesSorted.indexOf(selectedDate) - 1];
+        return yesterday && (dailyData[yesterday]?.sessionLoad || 0) > 300;
+      })() },
+    { key: 'hydration-load-spike', active: todayEWMA.ratio > 1.1 && todayEWMA.acute > todayEWMA.chronic },
+  ];
+  for (const { key, active } of triggers) {
+    if (!active) continue;
+    const state = nudgeState[key] || {};
+    if (state.dismissedUntil && new Date(state.dismissedUntil) > now) continue;
+    const variants = nudgeVariants[key];
+    const nextVariant = ((state.lastVariant ?? -1) + 1) % variants.length;
+    return { key, text: variants[nextVariant], nextVariant };
+  }
+  return null;
+}
+
+function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, sessionLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted }) {
   const [mode, setMode] = useState("quick"); // "quick" or "full"
   const [section, setSection] = useState("wellness");
   const isToday = selectedDate === todayStr();
@@ -853,6 +915,37 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
         )}
         {todayEWMA.chronic > 0 && <div className="mt-3 pt-3 border-t border-slate-700/30 flex gap-4 text-xs"><div><span className="text-slate-500">Acute </span><span className="font-mono font-bold text-sky-400">{todayEWMA.acute}</span></div><div><span className="text-slate-500">Chronic </span><span className="font-mono font-bold text-slate-300">{todayEWMA.chronic}</span></div><div><span className="text-slate-500">Ratio </span><span className={`font-mono font-bold ${todayEWMA.ratio > 1.3 ? "text-amber-400" : todayEWMA.ratio < 0.8 ? "text-sky-400" : "text-emerald-400"}`}>{todayEWMA.ratio}</span></div></div>}
       </Card>
+      {/* Nudge card */}
+      {(() => {
+        const nudge = getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedDate, settings, profile });
+        if (!nudge) return null;
+        const dismiss = () => {
+          const dismissedUntil = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+          const newState = { ...profile.nudgeState, [nudge.key]: { ...(profile.nudgeState?.[nudge.key] || {}), dismissedUntil, lastVariant: nudge.nextVariant, lastShown: new Date().toISOString() } };
+          setProfile(prev => ({ ...prev, nudgeState: newState }));
+        };
+        const keyState = profile.nudgeState?.[nudge.key] || {};
+        if (keyState.lastVariant !== nudge.nextVariant) {
+          setTimeout(() => {
+            setProfile(prev => ({ ...prev, nudgeState: { ...prev.nudgeState, [nudge.key]: { ...(prev.nudgeState?.[nudge.key] || {}), lastVariant: nudge.nextVariant, lastShown: new Date().toISOString() } } }));
+          }, 0);
+        }
+        const [category] = nudge.key.split('-');
+        const accent = category === 'rest' ? 'border-l-amber-500' : category === 'hydration' ? 'border-l-sky-500' : 'border-l-emerald-500';
+        const label = category === 'rest' ? 'Recovery' : category === 'hydration' ? 'Hydration' : 'Nutrition';
+        const labelColor = category === 'rest' ? 'text-amber-400' : category === 'hydration' ? 'text-sky-400' : 'text-emerald-400';
+        return (
+          <Card className={`border-l-4 ${accent}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className={`text-[10px] uppercase tracking-wider font-semibold mb-1 ${labelColor}`}>{label}</div>
+                <div className="text-sm text-slate-300 leading-relaxed">{nudge.text}</div>
+              </div>
+              <button onClick={dismiss} className="flex-shrink-0 p-1 rounded hover:bg-slate-700/60 text-slate-500 hover:text-slate-300 transition-colors"><X size={14} /></button>
+            </div>
+          </Card>
+        );
+      })()}
       {/* Mode toggle */}
       <div className="flex gap-1 bg-slate-900/50 rounded-xl p-1">
         <button onClick={() => setMode("quick")} className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${mode === "quick" ? "bg-slate-700/60 text-white" : "text-slate-500 hover:text-slate-300"}`}>Quick Log</button>
