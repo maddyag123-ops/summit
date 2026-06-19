@@ -891,8 +891,11 @@ function getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedD
     const state = nudgeState[key] || {};
     if (state.dismissedUntil && new Date(state.dismissedUntil) > now) continue;
     const variants = nudgeVariants[key];
-    const nextVariant = ((state.lastVariant ?? -1) + 1) % variants.length;
-    return { key, text: variants[nextVariant], nextVariant };
+    // Only advance variant when the active trigger key changed from last shown
+    const lastKey = nudgeState._lastKey;
+    const currentVariant = state.lastVariant ?? 0;
+    const variant = lastKey !== key ? (currentVariant + 1) % variants.length : currentVariant;
+    return { key, text: variants[variant], variant };
   }
   return null;
 }
@@ -902,6 +905,36 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
   const [section, setSection] = useState("wellness");
   const isToday = selectedDate === todayStr();
   const unit = settings.unit || "lbs";
+
+  const nudge = getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedDate, settings, profile });
+
+  // When the active nudge key changes, persist the new variant and lastKey
+  useEffect(() => {
+    if (!nudge) return;
+    const nudgeState = profile?.nudgeState || {};
+    const lastKey = nudgeState._lastKey;
+    if (lastKey === nudge.key) return; // same trigger, nothing to update
+    setProfile(prev => ({
+      ...prev,
+      nudgeState: {
+        ...prev.nudgeState,
+        _lastKey: nudge.key,
+        [nudge.key]: { ...(prev.nudgeState?.[nudge.key] || {}), lastVariant: nudge.variant },
+      },
+    }));
+  }, [nudge?.key]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const nudgeDismiss = nudge ? () => {
+    const dismissedUntil = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+    setProfile(prev => ({
+      ...prev,
+      nudgeState: {
+        ...prev.nudgeState,
+        _lastKey: null,
+        [nudge.key]: { ...(prev.nudgeState?.[nudge.key] || {}), dismissedUntil, lastVariant: nudge.variant },
+      },
+    }));
+  } : null;
 
   // Quick session helpers
   const quickAddSession = (type) => {
@@ -970,20 +1003,7 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
         {todayEWMA.chronic > 0 && <div className="mt-3 pt-3 border-t border-slate-700/30 flex gap-4 text-xs"><div><span className="text-slate-500">Acute </span><span className="font-mono font-bold text-sky-400">{todayEWMA.acute}</span></div><div><span className="text-slate-500">Chronic </span><span className="font-mono font-bold text-slate-300">{todayEWMA.chronic}</span></div><div><span className="text-slate-500">Ratio </span><span className={`font-mono font-bold ${todayEWMA.ratio > 1.3 ? "text-amber-400" : todayEWMA.ratio < 0.8 ? "text-sky-400" : "text-emerald-400"}`}>{todayEWMA.ratio}</span></div></div>}
       </Card>
       {/* Nudge card */}
-      {(() => {
-        const nudge = getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedDate, settings, profile });
-        if (!nudge) return null;
-        const dismiss = () => {
-          const dismissedUntil = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
-          const newState = { ...profile.nudgeState, [nudge.key]: { ...(profile.nudgeState?.[nudge.key] || {}), dismissedUntil, lastVariant: nudge.nextVariant, lastShown: new Date().toISOString() } };
-          setProfile(prev => ({ ...prev, nudgeState: newState }));
-        };
-        const keyState = profile.nudgeState?.[nudge.key] || {};
-        if (keyState.lastVariant !== nudge.nextVariant) {
-          setTimeout(() => {
-            setProfile(prev => ({ ...prev, nudgeState: { ...prev.nudgeState, [nudge.key]: { ...(prev.nudgeState?.[nudge.key] || {}), lastVariant: nudge.nextVariant, lastShown: new Date().toISOString() } } }));
-          }, 0);
-        }
+      {nudge && (() => {
         const [category] = nudge.key.split('-');
         const accent = category === 'rest' ? 'border-l-amber-500' : category === 'hydration' ? 'border-l-sky-500' : 'border-l-emerald-500';
         const label = category === 'rest' ? 'Recovery' : category === 'hydration' ? 'Hydration' : 'Nutrition';
@@ -995,7 +1015,7 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
                 <div className={`text-[10px] uppercase tracking-wider font-semibold mb-1 ${labelColor}`}>{label}</div>
                 <div className="text-sm text-slate-300 leading-relaxed">{nudge.text}</div>
               </div>
-              <button onClick={dismiss} className="flex-shrink-0 p-1 rounded hover:bg-slate-700/60 text-slate-500 hover:text-slate-300 transition-colors"><X size={14} /></button>
+              <button onClick={nudgeDismiss} className="flex-shrink-0 p-1 rounded hover:bg-slate-700/60 text-slate-500 hover:text-slate-300 transition-colors"><X size={14} /></button>
             </div>
           </Card>
         );
