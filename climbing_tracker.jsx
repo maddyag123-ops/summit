@@ -836,11 +836,8 @@ function getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedD
     if (!active) continue;
     const state = nudgeState[key] || {};
     if (state.dismissedUntil && new Date(state.dismissedUntil) > now) continue;
-    const variants = nudgeVariants[key];
-    const lastKey = nudgeState._lastKey;
-    const currentVariant = state.lastVariant ?? 0;
-    const variant = lastKey !== key ? (currentVariant + 1) % variants.length : currentVariant;
-    return { key, text: variants[variant], variant };
+    const variant = state.showVariant ?? 0;
+    return { key, text: nudgeVariants[key][variant], variant };
   }
   return null;
 }
@@ -852,31 +849,15 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
   const unit = settings.unit || "lbs";
 
   const nudge = getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedDate, settings, profile });
-  const persistedNudgeKey = useRef(profile?.nudgeState?._lastKey ?? null);
-
-  useEffect(() => {
-    if (!nudge) return;
-    if (persistedNudgeKey.current === nudge.key) return;
-    persistedNudgeKey.current = nudge.key;
-    setProfile(prev => ({
-      ...prev,
-      nudgeState: {
-        ...prev.nudgeState,
-        _lastKey: nudge.key,
-        [nudge.key]: { ...(prev.nudgeState?.[nudge.key] || {}), lastVariant: nudge.variant },
-      },
-    }));
-  }, [nudge?.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const nudgeDismiss = nudge ? () => {
     const dismissedUntil = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
-    persistedNudgeKey.current = null;
+    const nextVariant = (nudge.variant + 1) % nudgeVariants[nudge.key].length;
     setProfile(prev => ({
       ...prev,
       nudgeState: {
         ...prev.nudgeState,
-        _lastKey: null,
-        [nudge.key]: { ...(prev.nudgeState?.[nudge.key] || {}), dismissedUntil, lastVariant: nudge.variant },
+        [nudge.key]: { dismissedUntil, showVariant: nextVariant },
       },
     }));
   } : null;
