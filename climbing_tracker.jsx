@@ -817,20 +817,21 @@ function getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedD
   const now = new Date();
   const nudgeState = profile?.nudgeState || {};
   const triggers = [
-    { key: 'rest-high-load',      active: todayEWMA.ratio > 1.3 && readiness.flag === "REST" },
-    { key: 'hydration-force-drop', active: (() => {
+    { key: 'rest-high-load',        active: todayEWMA.ratio > 1.3 && readiness.flag === "REST" },
+    { key: 'hydration-load-spike',  active: day.conditions === 'Hot' },
+    { key: 'hydration-force-drop',  active: (() => {
         const mt = day.markerType || settings.instrument;
         const recent = datesSorted.filter(d => d < selectedDate).slice(-4).map(d => dayMarkerAvg(dailyData[d], mt)).filter(v => v > 0);
         return recent.length >= 3 && recent[recent.length - 1] < recent[0] * 0.92;
       })() },
-    { key: 'nutrition-rest-day',  active: day.sessions?.length > 0 && day.sessions.every(s => s.sessionType === "Rest") },
-    { key: 'rest-deload',         active: todayEWMA.chronic > 0 && todayEWMA.ratio < 0.7 },
-    { key: 'rest-low-sleep',      active: Number(day.sleepDuration) > 0 && Number(day.sleepDuration) < 6 },
+    { key: 'nutrition-rest-day',    active: day.sessions?.length > 0 && day.sessions.every(s => s.sessionType === "Rest") },
+    { key: 'rest-deload',           active: todayEWMA.chronic > 0 && todayEWMA.ratio < 0.7 },
+    { key: 'rest-low-sleep',        active: Number(day.sleepDuration) > 0 && Number(day.sleepDuration) < 6 },
     { key: 'nutrition-carb-window', active: (() => {
         const yesterday = datesSorted[datesSorted.indexOf(selectedDate) - 1];
         return yesterday && (dailyData[yesterday]?.sessionLoad || 0) > 300;
       })() },
-    { key: 'hydration-load-spike', active: todayEWMA.ratio > 1.1 && todayEWMA.acute > todayEWMA.chronic },
+    { key: 'hydration-load-spike',  active: todayEWMA.ratio > 1.1 && todayEWMA.acute > todayEWMA.chronic },
   ];
   for (const { key, active } of triggers) {
     if (!active) continue;
