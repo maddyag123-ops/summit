@@ -907,13 +907,13 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
   const unit = settings.unit || "lbs";
 
   const nudge = getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedDate, settings, profile });
+  const persistedNudgeKey = useRef(profile?.nudgeState?._lastKey ?? null);
 
   // When the active nudge key changes, persist the new variant and lastKey
   useEffect(() => {
     if (!nudge) return;
-    const nudgeState = profile?.nudgeState || {};
-    const lastKey = nudgeState._lastKey;
-    if (lastKey === nudge.key) return; // same trigger, nothing to update
+    if (persistedNudgeKey.current === nudge.key) return;
+    persistedNudgeKey.current = nudge.key;
     setProfile(prev => ({
       ...prev,
       nudgeState: {
@@ -926,6 +926,7 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
 
   const nudgeDismiss = nudge ? () => {
     const dismissedUntil = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+    persistedNudgeKey.current = null;
     setProfile(prev => ({
       ...prev,
       nudgeState: {
