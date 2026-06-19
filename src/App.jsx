@@ -905,6 +905,7 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
 
   // getNudge() is called directly in render — re-evaluates on every prop change (day, daySessions, todayEWMA, profile)
   const nudge = getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedDate, settings, profile });
+  console.log('Nudge evaluated:', nudge?.key, nudge?.text?.slice(0, 40), '| nudgeState:', JSON.stringify(profile?.nudgeState));
 
   // Dismiss is key-specific: only suppresses this nudge's key for 48h, advances its variant for next show
   const nudgeDismiss = nudge ? () => {
