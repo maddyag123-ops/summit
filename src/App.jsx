@@ -823,7 +823,7 @@ export default function ClimbingTracker() {
         </div>
       </div>}
       <main className="max-w-2xl mx-auto px-4 py-4 pb-24">
-        {tab === "today" && <TodayView {...{ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, sessionLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted }} />}
+        {tab === "today" && <TodayView {...{ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, sessionLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }} />}
         {tab === "climbs" && <ClimbView {...{ selectedDate, shiftDate, climbData, setClimbData, settings, dailyData, setDailyData }} />}
         {tab === "assess" && <AssessView {...{ assessData, setAssessData, settings }} />}
         {tab === "injury" && <InjuryView {...{ injuryData, setInjuryData, dailyData, ewmaData, datesSorted }} />}
@@ -841,44 +841,63 @@ export default function ClimbingTracker() {
 }
 
 // ─── TODAY VIEW ───
-const nudgeVariants = {
-  'rest-high-load': [
-    "EWMA ratio is elevated and multiple markers are flagged — full rest today lets adaptation catch up to the load you've put in.",
-    "Load has been running hot for several days. The fitness gains happen during recovery, not the next session — today is a rest day.",
-  ],
-  'hydration-force-drop': [
-    "Force marker has dropped several days running. Even mild fluid loss measurably reduces grip strength — check your daily intake.",
-    "A multi-day force decline often tracks with hydration status before anything else. Worth ruling out before assuming fatigue.",
-  ],
-  'nutrition-rest-day': [
-    "Rest days are still active recovery for connective tissue — protein intake today matters as much as on a training day.",
-    "Tendon repair continues on rest days. Don't let today's protein intake drop just because you're not climbing.",
-  ],
-  'rest-deload': [
-    "Load is sitting below your usual baseline — a natural deload window. Good time to catch up on sleep debt.",
-    "You're in a lighter load phase right now. Fitness built over weeks doesn't disappear in a few light days — let recovery lead.",
-  ],
-  'rest-low-sleep': [
-    "Short sleep affects grip strength and reaction time more than most athletes expect. Consider trimming intensity today, not just volume.",
-    "Sleep debt compounds. If you climb today, technique-focused volume is a safer bet than max effort attempts.",
-  ],
-  'nutrition-carb-window': [
-    "Yesterday's session was a big one — carbohydrate intake today supports glycogen recovery during this window.",
-    "Heavy load yesterday draws down glycogen stores. Today's carb intake matters more than usual for tomorrow's session.",
-  ],
-  'hydration-load-spike': [
-    "Training load is trending above baseline. Fluid needs scale with load — make sure intake is keeping pace.",
-    "When load climbs, hydration demands climb with it. Don't let intake stay flat while volume goes up.",
-  ],
-};
+// TODO: personalise nudge text from athlete history when datesSorted.length > 42
+function nudgeVariants({ profile, assessData }) {
+  const recentBodyweight = assessData.length > 0
+    ? Number([...assessData].reverse().find(a => a.bodyweight)?.bodyweight) || null
+    : null;
+  const bw = Number(profile?.bodyweight) || recentBodyweight || 70;
+  const isMale = profile?.sex === 'Male';
+  const age = Number(profile?.age) || null;
+  const isMasters = age !== null && age >= 35;
+  const hydrationBaseline = Math.round(bw * (isMale ? 38 : 35));
+  const bwSource = profile?.bodyweight ? '' :
+    recentBodyweight ? ' (from last assessment)' :
+    ' (based on 70kg default — add your weight in Profile for personalised targets)';
+  return {
+    'rest-high-load': [
+      { text: `Load has been running hot for several days. Full rest today lets adaptation catch up. Aim for ${Math.round(bw * 1.6)}g protein today to support tissue repair.${bwSource}`, citation: 'Morton et al. (2018), Br J Sports Med' },
+      { text: `EWMA ratio is elevated and markers are flagged. A rest day now returns more than another session. Target ${Math.round(bw * 1.6)}g protein distributed across meals today.${bwSource}`, citation: 'Morton et al. (2018), Br J Sports Med' },
+    ],
+    'hydration-hot-conditions': [
+      { text: `Hot conditions flagged. Daily fluid baseline: ${hydrationBaseline}ml (${bw}kg × ${isMale ? 38 : 35}ml/kg). Add 500–750ml per hour of climbing on top of that.${bwSource}`, citation: 'Sawka et al. (2007), Med Sci Sports Ex' },
+      { text: `Heat increases sweat rate and reduces grip endurance faster than most athletes expect. Start well hydrated — ${hydrationBaseline}ml baseline today plus extra during climbing.${bwSource}`, citation: 'Judelson et al. (2007), Sports Medicine' },
+    ],
+    'hydration-force-drop': [
+      { text: `Force marker has dropped several days running. Daily fluid target: ${hydrationBaseline}ml (${bw}kg × ${isMale ? 38 : 35}ml/kg). Add 500–750ml per session hour.${bwSource}`, citation: 'Judelson et al. (2007), Sports Medicine' },
+      { text: `A multi-day force decline often tracks with hydration before anything else. Worth ruling out with ${hydrationBaseline}ml today before assuming accumulated fatigue.${bwSource}`, citation: 'Judelson et al. (2007), Sports Medicine' },
+    ],
+    'nutrition-rest-day': [
+      { text: `Rest days are active recovery for tendons. Target ${Math.round(bw * 0.4)}g protein per meal across 4–5 meals today (${Math.round(bw * 1.6)}–${Math.round(bw * 2.0)}g total).${isMasters ? ` At ${age}, lean toward the upper end — protein utilisation shifts with age.` : ''}${bwSource}`, citation: 'Morton et al. (2018), Br J Sports Med' },
+      { text: `Don't let protein intake drop on rest days — connective tissue repair is most active now. ${Math.round(bw * 0.4)}g per meal is the target dose.${bwSource}`, citation: 'Stokes et al. (2018), Nutrients' },
+    ],
+    'rest-deload': [
+      { text: `Load is below your usual baseline. Good time to catch up on sleep debt and keep protein consistent at ${Math.round(bw * 1.6)}g daily.${bwSource}`, citation: 'Watson (2017), Curr Sports Med Reports' },
+      { text: `You're in a lighter load phase. Prioritise 8–9h sleep and consistent protein (${Math.round(bw * 1.6)}g/day) — deload weeks are where training blocks are consolidated.${bwSource}`, citation: 'Watson (2017), Curr Sports Med Reports' },
+    ],
+    'rest-low-sleep': [
+      { text: `Short sleep logged. Grip strength, reaction time, and injury resilience all decline measurably with sleep debt. Consider reducing intensity rather than volume today.`, citation: 'Watson (2017), Curr Sports Med Reports' },
+      { text: `Sleep debt affects grip and decision-making on the wall more than most athletes expect. A technique-focused session is a better return than pushing hard on short rest.`, citation: 'Watson (2017), Curr Sports Med Reports' },
+    ],
+    'nutrition-carb-window': [
+      { text: `Heavy session yesterday. Carbohydrate replenishment window is 0–24h — target ${Math.round(bw * 1.0)}–${Math.round(bw * 1.2)}g carbs today (${bw}kg × 1.0–1.2g/kg).${bwSource}`, citation: 'Burke et al. (2011), J Sports Sciences' },
+      { text: `Yesterday's load drew down glycogen stores. Today's carb intake (${Math.round(bw * 1.0)}–${Math.round(bw * 1.2)}g) matters more than usual for tomorrow's session quality.${bwSource}`, citation: 'Burke et al. (2011), J Sports Sciences' },
+    ],
+    'hydration-load-spike': [
+      { text: `Training load trending above baseline. Daily fluid target: ${hydrationBaseline}ml minimum.${bwSource}`, citation: 'Sawka et al. (2007), Med Sci Sports Ex' },
+      { text: `Load is above your usual baseline. Keep fluid intake at ${hydrationBaseline}ml/day — don't let hydration stay flat while volume climbs.${bwSource}`, citation: 'Judelson et al. (2007), Sports Medicine' },
+    ],
+  };
+}
 
-function getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedDate, settings, profile }) {
+function getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedDate, settings, profile, assessData }) {
   const now = new Date();
   const nudgeState = profile?.nudgeState || {};
+  const variants = nudgeVariants({ profile, assessData });
   const triggers = [
-    { key: 'rest-high-load',        active: todayEWMA.ratio > 1.3 && readiness.flag === "REST" },
-    { key: 'hydration-load-spike',  active: day.conditions === 'Hot' },
-    { key: 'hydration-force-drop',  active: (() => {
+    { key: 'rest-high-load',           active: todayEWMA.ratio > 1.3 && readiness.flag === "REST" },
+    { key: 'hydration-hot-conditions', active: day.conditions === 'Hot' },
+    { key: 'hydration-force-drop',     active: (() => {
         const mt = day.markerType || settings.instrument;
         const recent = datesSorted.filter(d => d < selectedDate).slice(-4).map(d => dayMarkerAvg(dailyData[d], mt)).filter(v => v > 0);
         return recent.length >= 3 && recent[recent.length - 1] < recent[0] * 0.92;
@@ -898,25 +917,26 @@ function getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedD
     if (state.dismissedUntil && new Date(state.dismissedUntil) > now) continue;
     // showVariant is set on dismiss to advance for next appearance; default 0
     const variant = state.showVariant ?? 0;
-    return { key, text: nudgeVariants[key][variant], variant };
+    const { text, citation } = variants[key][variant];
+    return { key, text, citation, variant };
   }
   return null;
 }
 
-function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, sessionLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted }) {
+function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, sessionLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }) {
   const [mode, setMode] = useState("quick"); // "quick" or "full"
   const [section, setSection] = useState("wellness");
   const isToday = selectedDate === todayStr();
   const unit = settings.unit || "lbs";
 
   // getNudge() is called directly in render — re-evaluates on every prop change (day, daySessions, todayEWMA, profile)
-  const nudge = getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedDate, settings, profile });
-  console.log('Nudge evaluated:', nudge?.key, nudge?.text?.slice(0, 40), '| nudgeState:', JSON.stringify(profile?.nudgeState));
+  const nudge = getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedDate, settings, profile, assessData });
 
   // Dismiss is key-specific: only suppresses this nudge's key for 48h, advances its variant for next show
   const nudgeDismiss = nudge ? () => {
     const dismissedUntil = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
-    const nextVariant = (nudge.variant + 1) % nudgeVariants[nudge.key].length;
+    const keyVariants = nudgeVariants({ profile, assessData })[nudge.key];
+    const nextVariant = (nudge.variant + 1) % keyVariants.length;
     setProfile(prev => ({
       ...prev,
       nudgeState: {
@@ -1003,7 +1023,8 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className={`text-[10px] uppercase tracking-wider font-semibold mb-1 ${labelColor}`}>{label}</div>
-                <div className="text-sm text-slate-300 leading-relaxed">{nudge.text}</div>
+                <div className="text-[10px] text-slate-400 leading-relaxed">{nudge.text}</div>
+                <div className="text-[10px] text-slate-600 mt-0.5 italic">{nudge.citation}</div>
               </div>
               <button onClick={nudgeDismiss} className="flex-shrink-0 p-1 rounded hover:bg-slate-700/60 text-slate-500 hover:text-slate-300 transition-colors"><X size={14} /></button>
             </div>
