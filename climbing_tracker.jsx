@@ -36,7 +36,7 @@ async function getAllUsers() { return storageGet("summit-users", [], true); }
 
 const emptyProfile = () => ({
   bodyweight: "", height: "", sex: "", dob: "", dominantHand: "",
-  climbingYears: "", trainingYears: "", discipline: [],
+  climbingYears: "", trainingYears: "", discipline: [], indoorOutdoorSplit: 50,
   onsightGradeSport: "", flashGradeBoulder: "", completed: false,
   nudgeState: {},
 });
@@ -347,6 +347,19 @@ function ProfileSetupScreen({ profile, setProfile, settings, currentUser, onClos
               return <button key={opt} onClick={() => set("discipline", active ? form.discipline.filter(x => x !== opt) : [...(form.discipline || []), opt])}
                 className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border transition-all ${active ? "bg-sky-500/25 text-sky-300 border-sky-500/40" : "bg-slate-800/60 text-slate-500 border-slate-700/40 hover:border-slate-600"}`}>{opt}</button>;
             })}
+          </div>
+        </div>
+        <div>
+          <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">Typical Training Split</label>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-[10px] text-slate-500 w-12 text-left">Indoor</span>
+            <input type="range" min="0" max="100" step="10" value={form.indoorOutdoorSplit ?? 50}
+              onChange={e => set("indoorOutdoorSplit", Number(e.target.value))}
+              className="flex-1 h-1.5 rounded-full appearance-none bg-slate-700 accent-sky-500 cursor-pointer" />
+            <span className="text-[10px] text-slate-500 w-12 text-right">Outdoor</span>
+          </div>
+          <div className="text-center text-[11px] text-slate-300">
+            {(() => { const v = form.indoorOutdoorSplit ?? 50; return v === 50 ? '50% Indoor / 50% Outdoor' : v < 50 ? `${100 - v}% Indoor / ${v}% Outdoor` : `${v}% Outdoor / ${100 - v}% Indoor`; })()}
           </div>
         </div>
         <p className="text-[10px] text-slate-600">Grades are subjective interpretations of physical challenge, but let's track them 🙂</p>
