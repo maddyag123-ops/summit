@@ -802,7 +802,8 @@ function nudgeVariants({ profile, assessData, settings }) {
     ? Number([...assessData].reverse().find(a => a.bodyweight)?.bodyweight) || null
     : null;
   const bw = Number(profile?.bodyweight) || recentBodyweight || 70;
-  const bwKg = (settings?.unit === 'lbs') ? Math.round(bw * 0.453592 * 10) / 10 : bw;
+  const settingsUnit = settings?.unit ?? 'lbs';
+  const bwKg = settingsUnit === 'lbs' ? Math.round(bw * 0.453592 * 10) / 10 : bw;
   const isMale = profile?.sex === 'Male';
   const age = profile?.dob ? Math.floor((new Date() - new Date(profile.dob)) / (365.25 * 24 * 60 * 60 * 1000)) : null;
   const isMasters = age !== null && age >= 35;
