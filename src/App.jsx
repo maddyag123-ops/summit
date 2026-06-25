@@ -609,7 +609,7 @@ export default function ClimbingTracker() {
 
   const readiness = useMemo(() => {
   const getReadiness = () => {
-    if (wellnessCount < 4) return { flag: "—", color: "gray", label: "Incomplete", items: [], isBaseline: false, baselineDay: 0 };
+    if (wellnessCount < 4) return { color: "gray", summary: "Not enough wellness data today", items: [], positiveItems: [], isBaseline: false, baselineDay: 0 };
 
     // Count days with data
     const daysWithData = datesSorted.filter(d => {
@@ -630,13 +630,13 @@ export default function ClimbingTracker() {
         if (fz < -1.5) forceZFlag = { label: "Force", arrow: "↓↓", z: fz, pct: Math.round(((curForce - fStats.mean) / fStats.mean) * 100) };
         else if (fz < -1) forceZFlag = { label: "Force", arrow: "↓", z: fz, pct: Math.round(((curForce - fStats.mean) / fStats.mean) * 100) };
       } else {
-        // No SD yet, use simple % drop
         const slice14 = forceVals.slice(-14);
-        if (!slice14.length) return;
-        const avg14 = slice14.reduce((a, b) => a + b, 0) / slice14.length;
-        const pctDrop = (curForce - avg14) / avg14;
-        if (pctDrop < -0.15) forceZFlag = { label: "Force", arrow: "↓↓", z: null, pct: Math.round(pctDrop * 100) };
-        else if (pctDrop < -0.1) forceZFlag = { label: "Force", arrow: "↓", z: null, pct: Math.round(pctDrop * 100) };
+        if (slice14.length) {
+          const avg14 = slice14.reduce((a, b) => a + b, 0) / slice14.length;
+          const pctDrop = (curForce - avg14) / avg14;
+          if (pctDrop < -0.15) forceZFlag = { label: "Force", arrow: "↓↓", z: null, pct: Math.round(pctDrop * 100) };
+          else if (pctDrop < -0.1) forceZFlag = { label: "Force", arrow: "↓", z: null, pct: Math.round(pctDrop * 100) };
+        }
       }
     }
 
@@ -658,11 +658,13 @@ export default function ClimbingTracker() {
       const flagged = [];
       if (forceZFlag) flagged.push(forceZFlag);
       if (hrvZFlag) flagged.push(hrvZFlag);
-      // Simple fixed thresholds during baseline
-      if (wellnessTotal < 36 && flagged.length > 0) return { flag: "REST", color: "red", label: `${flagged.length + 1} markers below baseline`, items: [{ label: "Wellness", arrow: "↓↓", z: null, pct: null }, ...flagged], isBaseline: true, baselineDay: daysWithData };
-      if (wellnessTotal < 36) return { flag: "CAUTION", color: "yellow", label: "1 item below norm", items: [{ label: "Wellness", arrow: "↓", z: null, pct: null }], isBaseline: true, baselineDay: daysWithData };
-      if (flagged.length > 0) return { flag: "CAUTION", color: "yellow", label: `${flagged.length} markers below baseline`, items: flagged, isBaseline: true, baselineDay: daysWithData };
-      return { flag: "GO", color: "green", label: "Ready to perform", items: [], isBaseline: true, baselineDay: daysWithData };
+      const allFlagged = wellnessTotal < 36 ? [{ label: "Wellness", arrow: wellnessTotal < 30 ? "↓↓" : "↓", z: null, pct: null }, ...flagged] : flagged;
+      const fc = allFlagged.length;
+      const bColor = fc >= 2 ? "red" : fc > 0 ? "yellow" : "gray";
+      const bSummary = fc > 0
+        ? `${fc} item${fc > 1 ? "s" : ""} below threshold`
+        : "Looking good today: all markers within norm";
+      return { color: bColor, summary: bSummary, items: allFlagged, positiveItems: [], isBaseline: true, baselineDay: daysWithData };
     }
 
     // Z-score per wellness item
@@ -690,16 +692,54 @@ export default function ClimbingTracker() {
     if (forceZFlag) flaggedItems.push(forceZFlag);
     if (hrvZFlag) flaggedItems.push(hrvZFlag);
 
+    // Positive markers detection
+    const positiveItems = [];
+    WELLNESS_ITEMS.forEach(item => {
+      const vals = datesSorted.filter(d => d < selectedDate).map(d => {
+        const dd = dailyData[d]; if (!dd) return null;
+        const v = item.isHours ? hoursToScore(dd[item.key]) : Number(dd[item.key]);
+        return (v && v > 0) ? v : null;
+      }).filter(v => v !== null);
+      const currentVal = item.isHours ? hoursToScore(day[item.key]) : Number(day[item.key]);
+      if (!currentVal || vals.length < 7) return;
+      const stats = rollingStats(vals);
+      if (!stats || stats.sd === 0) return;
+      const z = zScore(currentVal, stats.mean, stats.sd);
+      if (z > 1.0) {
+        const arrow = z > 1.5
+          ? (item.invertArrow ? "↓↓" : "↑↑")
+          : (item.invertArrow ? "↓" : "↑");
+        positiveItems.push({ label: item.label, arrow, z });
+      }
+    });
+
     const severeCount = flaggedItems.filter(i => i.arrow.length === 2).length;
     const totalFlagged = flaggedItems.length;
+    const flagCount = totalFlagged;
+    const positiveCount = positiveItems.length;
 
-    if (severeCount >= 2 || (totalFlagged >= 3) || (severeCount >= 1 && totalFlagged >= 2)) {
-      return { flag: "REST", color: "red", label: `${totalFlagged} markers below baseline`, items: flaggedItems, isBaseline: false, baselineDay: daysWithData };
+    // Summary line
+    let summary;
+    if (flagCount > 0 && positiveCount > 0) {
+      summary = `${flagCount} item${flagCount > 1 ? "s" : ""} below norm · ${positiveCount} personal best${positiveCount > 1 ? "s" : ""}`;
+    } else if (flagCount > 0) {
+      summary = `${flagCount} item${flagCount > 1 ? "s" : ""} below your norm`;
+    } else if (positiveCount > 0) {
+      summary = `${positiveCount} personal best${positiveCount > 1 ? "s" : ""}`;
+    } else {
+      summary = "Looking good today: all markers within norm";
     }
-    if (totalFlagged > 0) {
-      return { flag: "CAUTION", color: "yellow", label: `${totalFlagged} item${totalFlagged > 1 ? "s" : ""} below norm`, items: flaggedItems, isBaseline: false, baselineDay: daysWithData };
-    }
-    return { flag: "GO", color: "green", label: "Ready to perform", items: [], isBaseline: false, baselineDay: daysWithData };
+
+    // Color
+    const color = severeCount >= 2 || (totalFlagged >= 3) || (severeCount >= 1 && totalFlagged >= 2)
+      ? "red"
+      : totalFlagged > 0
+        ? "yellow"
+        : positiveItems.length > 0
+          ? "green"
+          : "gray";
+
+    return { color, summary, items: flaggedItems, positiveItems, isBaseline: false, baselineDay: daysWithData };
   };
   return getReadiness();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -914,7 +954,7 @@ function getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedD
   const nudgeState = profile?.nudgeState || {};
   const variants = nudgeVariants({ profile, assessData, settings });
   const triggers = [
-    { key: 'rest-high-load',           active: todayEWMA.ratio > 1.3 && readiness.flag === "REST" },
+    { key: 'rest-high-load',           active: todayEWMA.ratio > 1.3 && readiness.color === "red" },
     { key: 'hydration-hot-conditions', active: day.conditions === 'Hot' },
     { key: 'hydration-force-drop',     active: (() => {
         const mt = day.markerType || settings.instrument;
@@ -937,7 +977,10 @@ function getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedD
     // showVariant is set on dismiss to advance for next appearance; default 0
     const variant = state.showVariant ?? 0;
     const { text, citation } = variants[key][variant];
-    return { key, text, citation, variant };
+    const cat = key.split('-')[0];
+    const category = cat === 'hydration' ? 'Hydration' : cat === 'nutrition' ? 'Nutrition' : 'Recovery';
+    const icon = cat === 'hydration' ? '💧' : cat === 'nutrition' ? '🥗' : '🔄';
+    return { key, text, citation, variant, category, icon };
   }
   return null;
 }
@@ -1003,53 +1046,55 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
       </div>
       <Card className={`border-l-4 ${readiness.color === "green" ? "border-l-emerald-500" : readiness.color === "yellow" ? "border-l-amber-500" : readiness.color === "red" ? "border-l-red-500" : "border-l-slate-600"}`}>
         <div className="flex items-center justify-between">
-          <div>
+          <div className="flex-1">
             <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Readiness</div>
-            <div className="flex items-center gap-2">
-              {readiness.color === "green" ? <CheckCircle size={22} className="text-emerald-400" /> : readiness.color === "yellow" ? <MinusCircle size={22} className="text-amber-400" /> : readiness.color === "red" ? <AlertTriangle size={22} className="text-red-400" /> : <MinusCircle size={22} className="text-slate-500" />}
-              <span className={`text-2xl font-bold ${readiness.color === "green" ? "text-emerald-400" : readiness.color === "yellow" ? "text-amber-400" : readiness.color === "red" ? "text-red-400" : "text-slate-500"}`}>{readiness.flag}</span>
+            <div className={`text-sm font-semibold ${readiness.color === "green" ? "text-emerald-400" : readiness.color === "yellow" ? "text-amber-400" : readiness.color === "red" ? "text-red-400" : "text-slate-400"}`}>
+              {readiness.summary}
             </div>
-            <div className="text-[10px] text-slate-500 mt-1">{readiness.label}</div>
+            {readiness.items?.length > 0 && (
+              <div className="text-[10px] text-slate-500 italic mt-1">
+                • {readiness.items.map((item, i) => (
+                  <span key={i}>{i > 0 && " · "}{item.label} {item.arrow} {item.z !== null ? `(${item.z > 0 ? "+" : ""}${item.z} SD)` : item.pct !== null ? `(${item.pct}%)` : ""}</span>
+                ))}
+              </div>
+            )}
+            {readiness.positiveItems?.length > 0 && (
+              <div className="text-[10px] text-emerald-500 italic mt-1">
+                • {readiness.positiveItems.map((item, i) => (
+                  <span key={i}>{i > 0 && " · "}{item.label} {item.arrow} (+{item.z} SD)</span>
+                ))}
+              </div>
+            )}
           </div>
-          <div className="text-right space-y-1">
+          <div className="text-right space-y-1 ml-3">
             <div className="text-[10px] text-slate-500">Wellness</div>
             <div className="text-xl font-bold font-mono">{wellnessCount === 6 ? wellnessTotal : "—"}<span className="text-sm text-slate-600">/60</span></div>
             {sessionLoad > 0 && <><div className="text-[10px] text-slate-500 mt-2">Load</div><div className="text-lg font-bold text-sky-400 font-mono">{sessionLoad}<span className="text-xs text-slate-600"> AU</span></div></>}
           </div>
         </div>
-        {readiness.items.length > 0 && (
-          <div className={`mt-2.5 text-xs ${readiness.color === "red" ? "text-red-400" : "text-amber-400"}`}>
-            • {readiness.items.map((item, i) => (
-              <span key={i}>{i > 0 && " · "}{item.label} {item.arrow} {item.z !== null ? `(${item.z > 0 ? "+" : ""}${item.z} SD)` : item.pct !== null ? `(${item.pct}%)` : ""}</span>
-            ))}
-          </div>
-        )}
         {readiness.isBaseline && (
           <div className="mt-2.5 text-[10px] text-slate-500 flex items-center gap-1.5">
             <Loader size={10} className="animate-spin" /> Baseline: day {readiness.baselineDay}/{BASELINE_DAYS} — flags improve with more data
           </div>
         )}
-        {todayEWMA.chronic > 0 && <div className="mt-3 pt-3 border-t border-slate-700/30 flex gap-4 text-xs"><div><span className="text-slate-500">Acute </span><span className="font-mono font-bold text-sky-400">{todayEWMA.acute}</span></div><div><span className="text-slate-500">Chronic </span><span className="font-mono font-bold text-slate-300">{todayEWMA.chronic}</span></div><div><span className="text-slate-500">Ratio </span><span className={`font-mono font-bold ${todayEWMA.ratio > 1.3 ? "text-amber-400" : todayEWMA.ratio < 0.8 ? "text-sky-400" : "text-emerald-400"}`}>{todayEWMA.ratio}</span></div></div>}
+        {!readiness.isBaseline && (
+          <div className="mt-1.5 text-[10px] text-slate-600">
+            {readiness.baselineDay} days of data to establish baseline
+          </div>
+        )}
+        {nudge && (
+          <div className="mt-3 pt-3 border-t border-slate-700/30">
+            <div className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${nudge.category === "Hydration" ? "text-sky-400" : nudge.category === "Nutrition" ? "text-amber-400" : "text-violet-400"}`}>{nudge.icon} {nudge.category}</div>
+            <div className="text-[10px] text-slate-400 leading-relaxed">{nudge.text}</div>
+            <div className="text-[10px] text-slate-600 mt-0.5 italic">{nudge.citation}</div>
+          </div>
+        )}
+        {todayEWMA.chronic > 0 && <div className="mt-3 pt-3 border-t border-slate-700/30 flex gap-4 text-xs">
+          <div><span className="text-slate-500">Acute </span><span className="font-mono font-bold text-sky-400">{todayEWMA.acute}</span></div>
+          <div><span className="text-slate-500">Chronic </span><span className="font-mono font-bold text-slate-300">{todayEWMA.chronic}</span></div>
+          <div><span className="text-slate-500">Ratio </span><span className={`font-mono font-bold ${todayEWMA.ratio > 1.3 ? "text-amber-400" : todayEWMA.ratio < 0.8 ? "text-sky-400" : "text-emerald-400"}`}>{todayEWMA.ratio}</span></div>
+        </div>}
       </Card>
-      {/* Nudge card */}
-      {nudge && (() => {
-        const [category] = nudge.key.split('-');
-        const accent = category === 'rest' ? 'border-l-amber-500' : category === 'hydration' ? 'border-l-sky-500' : 'border-l-emerald-500';
-        const label = category === 'rest' ? 'Recovery' : category === 'hydration' ? 'Hydration' : 'Nutrition';
-        const labelColor = category === 'rest' ? 'text-amber-400' : category === 'hydration' ? 'text-sky-400' : 'text-emerald-400';
-        return (
-          <Card className={`border-l-4 ${accent}`}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className={`text-[10px] uppercase tracking-wider font-semibold mb-1 ${labelColor}`}>{label}</div>
-                <div className="text-[10px] text-slate-400 leading-relaxed">{nudge.text}</div>
-                <div className="text-[10px] text-slate-600 mt-0.5 italic">{nudge.citation}</div>
-              </div>
-              <button onClick={nudgeDismiss} className="flex-shrink-0 p-1 rounded hover:bg-slate-700/60 text-slate-500 hover:text-slate-300 transition-colors"><X size={14} /></button>
-            </div>
-          </Card>
-        );
-      })()}
       {/* Mode toggle */}
       <div className="flex gap-1 bg-slate-900/50 rounded-xl p-1">
         <button onClick={() => setMode("quick")} className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${mode === "quick" ? "bg-slate-700/60 text-white" : "text-slate-500 hover:text-slate-300"}`}>Quick Log</button>
