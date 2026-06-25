@@ -888,6 +888,51 @@ export default function ClimbingTracker() {
     return getPositiveCues();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dailyData, selectedDate, datesSorted, todayEWMA]);
+
+  const restPattern = useMemo(() => {
+    const isFullRestDay = (d) => {
+      const sessions = dailyData[d]?.sessions || [];
+      return sessions.length > 0 && sessions.every(s => s.sessionType === "Rest");
+    };
+
+    const isActiveRecoveryDay = (d) => {
+      const sessions = dailyData[d]?.sessions || [];
+      const activeTypes = ["Mobility", "Cardio", "Conditioning", "Antagonist"];
+      return sessions.length > 0 &&
+        sessions.every(s => activeTypes.includes(s.sessionType)) &&
+        !sessions.some(s => FINGER_SESSIONS.includes(s.sessionType));
+    };
+
+    const allDates = datesSorted.filter(d => d <= selectedDate);
+    const daysBetween = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000);
+
+    let lastFullRest = null, lastActiveRecovery = null;
+    for (let i = allDates.length - 2; i >= 0; i--) {
+      if (!lastFullRest && isFullRestDay(allDates[i])) lastFullRest = allDates[i];
+      if (!lastActiveRecovery && isActiveRecoveryDay(allDates[i])) lastActiveRecovery = allDates[i];
+      if (lastFullRest && lastActiveRecovery) break;
+    }
+
+    const daysSinceFullRest = lastFullRest ? daysBetween(lastFullRest, selectedDate) : null;
+    const daysSinceActiveRecovery = lastActiveRecovery ? daysBetween(lastActiveRecovery, selectedDate) : null;
+
+    const recentRestDays = datesSorted
+      .filter(d => d <= selectedDate && isFullRestDay(d))
+      .filter(d => daysBetween(d, selectedDate) <= 90);
+
+    const gaps = [];
+    for (let i = 1; i < recentRestDays.length; i++) {
+      const gap = daysBetween(recentRestDays[i - 1], recentRestDays[i]);
+      if (gap <= 14) gaps.push(gap);
+    }
+    const avgGap = gaps.length >= 3
+      ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length)
+      : 4;
+
+    const deviation = daysSinceFullRest !== null ? daysSinceFullRest - avgGap : null;
+
+    return { daysSinceFullRest, daysSinceActiveRecovery, avgGap, deviation };
+  }, [dailyData, datesSorted, selectedDate]);
   const shiftDate = (days) => { const d = new Date(selectedDate + "T12:00:00"); d.setDate(d.getDate() + days); setSelectedDate(d.toISOString().slice(0, 10)); };
 
   const showStatus = (type, msg) => {
@@ -1021,7 +1066,7 @@ export default function ClimbingTracker() {
         </div>
       </div>}
       <main className="max-w-2xl mx-auto px-4 py-4 pb-24">
-        {tab === "today" && <TodayView {...{ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }} />}
+        {tab === "today" && <TodayView {...{ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, restPattern, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }} />}
         {tab === "climbs" && <ClimbView {...{ selectedDate, shiftDate, climbData, setClimbData, settings, dailyData, setDailyData }} />}
         {tab === "assess" && <AssessView {...{ assessData, setAssessData, settings }} />}
         {tab === "injury" && <InjuryView {...{ injuryData, setInjuryData, dailyData, ewmaData, datesSorted }} />}
@@ -1129,7 +1174,7 @@ function getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedD
   return null;
 }
 
-function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }) {
+function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, restPattern, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }) {
   const [mode, setMode] = useState("quick"); // "quick" or "full"
   const [section, setSection] = useState("wellness");
   const isToday = selectedDate === todayStr();
@@ -1238,6 +1283,21 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
         {!readiness.isBaseline && (
           <div className="mt-1.5 text-[10px] text-slate-600">
             {readiness.baselineDay} days of data to establish baseline
+          </div>
+        )}
+        {restPattern.daysSinceFullRest > 2 && (
+          <div className={`mt-2 text-[10px] flex items-center justify-between ${
+            restPattern.deviation >= 3 ? "text-red-400" :
+            restPattern.deviation >= 1 ? "text-amber-400" :
+            "text-slate-400"
+          }`}>
+            <span>
+              Last full rest: {restPattern.daysSinceFullRest} day{restPattern.daysSinceFullRest !== 1 ? "s" : ""} ago
+              {restPattern.daysSinceActiveRecovery !== null && restPattern.daysSinceActiveRecovery < restPattern.daysSinceFullRest && (
+                <span className="text-slate-600"> · Active recovery: {restPattern.daysSinceActiveRecovery} day{restPattern.daysSinceActiveRecovery !== 1 ? "s" : ""} ago</span>
+              )}
+            </span>
+            <span className="text-slate-600 ml-2">(avg {restPattern.avgGap}d)</span>
           </div>
         )}
         {nudge && (
