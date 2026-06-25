@@ -718,14 +718,15 @@ export default function ClimbingTracker() {
     const flagCount = totalFlagged;
     const positiveCount = positiveItems.length;
 
-    // Summary line
+    // Summary line — lead negative when severe, lead positive when minor flags
+    const leadNegative = severeCount >= 2 || totalFlagged >= 3;
     let summary;
-    if (flagCount > 0 && positiveCount > 0) {
-      summary = `${flagCount} item${flagCount > 1 ? "s" : ""} below norm · ${positiveCount} personal best${positiveCount > 1 ? "s" : ""}`;
-    } else if (flagCount > 0) {
-      summary = `${flagCount} item${flagCount > 1 ? "s" : ""} below your norm`;
-    } else if (positiveCount > 0) {
-      summary = `${positiveCount} personal best${positiveCount > 1 ? "s" : ""}`;
+    if (leadNegative) {
+      summary = `${totalFlagged} marker${totalFlagged > 1 ? "s" : ""} below your baseline`;
+    } else if (totalFlagged === 1) {
+      summary = "Overall tracking well — 1 item to note";
+    } else if (totalFlagged === 0 && positiveItems.length > 0) {
+      summary = `${positiveItems.length} personal best${positiveItems.length > 1 ? "s" : ""}`;
     } else {
       summary = "Looking good today: all markers within norm";
     }
@@ -744,6 +745,105 @@ export default function ClimbingTracker() {
   return getReadiness();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dailyData, selectedDate, settings.instrument, wellnessCount, wellnessTotal, day, datesSorted]);
+
+  const positiveCues = useMemo(() => {
+    const getPositiveCues = () => {
+      const cues = [];
+
+      // Load ratio in optimal range
+      if (todayEWMA.ratio >= 0.8 && todayEWMA.ratio <= 1.1 && todayEWMA.chronic > 0) {
+        cues.push({ text: `Load ratio in optimal range (${todayEWMA.ratio})` });
+      }
+
+      // Rest day yesterday
+      const yesterday = datesSorted[datesSorted.indexOf(selectedDate) - 1];
+      if (yesterday) {
+        const ySessions = dailyData[yesterday]?.sessions || [];
+        const wasRest = ySessions.length > 0 && ySessions.every(s => s.sessionType === "Rest");
+        const wasOffWall = ySessions.length > 0 && ySessions.every(s =>
+          !["Bouldering — Power","Bouldering — Power Endurance","Sport Climbing — Rope","Sport Climbing — Circuit","Hangboard"].includes(s.sessionType)
+        );
+        if (wasRest) cues.push({ text: "Nice job resting yesterday" });
+        else if (wasOffWall) cues.push({ text: "Nice job taking time away from the wall yesterday" });
+      }
+
+      // Sleep above norm 3+ consecutive days
+      const sleepStreak = (() => {
+        let streak = 0;
+        for (let i = datesSorted.indexOf(selectedDate) - 1; i >= 0; i--) {
+          const d = datesSorted[i];
+          const dd = dailyData[d]; if (!dd) break;
+          const v = hoursToScore(dd.sleepDuration);
+          if (!v) break;
+          const vals = datesSorted.slice(0, i).map(x => hoursToScore(dailyData[x]?.sleepDuration) || 0).filter(x => x > 0);
+          const stats = rollingStats(vals);
+          if (!stats) break;
+          if (zScore(v, stats.mean, stats.sd) > 0.5) streak++;
+          else break;
+        }
+        return streak;
+      })();
+      if (sleepStreak >= 3) cues.push({ text: `${sleepStreak} nights of solid sleep in a row` });
+
+      // Finger soreness below norm 3+ consecutive days
+      const fingerStreak = (() => {
+        let streak = 0;
+        for (let i = datesSorted.indexOf(selectedDate) - 1; i >= 0; i--) {
+          const d = datesSorted[i];
+          const dd = dailyData[d]; if (!dd) break;
+          const v = Number(dd.fingerSoreness);
+          if (!v) break;
+          const vals = datesSorted.slice(0, i).map(x => Number(dailyData[x]?.fingerSoreness) || 0).filter(x => x > 0);
+          const stats = rollingStats(vals);
+          if (!stats) break;
+          if (zScore(v, stats.mean, stats.sd) > 0.5) streak++;
+          else break;
+        }
+        return streak;
+      })();
+      if (fingerStreak >= 3) cues.push({ text: `Fingers feeling fresh — ${fingerStreak} days below your usual soreness` });
+
+      // Muscle soreness below norm 3+ consecutive days
+      const sorenessStreak = (() => {
+        let streak = 0;
+        for (let i = datesSorted.indexOf(selectedDate) - 1; i >= 0; i--) {
+          const d = datesSorted[i];
+          const dd = dailyData[d]; if (!dd) break;
+          const v = Number(dd.soreness);
+          if (!v) break;
+          const vals = datesSorted.slice(0, i).map(x => Number(dailyData[x]?.soreness) || 0).filter(x => x > 0);
+          const stats = rollingStats(vals);
+          if (!stats) break;
+          if (zScore(v, stats.mean, stats.sd) > 0.5) streak++;
+          else break;
+        }
+        return streak;
+      })();
+      if (sorenessStreak >= 3) cues.push({ text: `Body feeling recovered — ${sorenessStreak} days of low muscle soreness` });
+
+      // Motivation above norm 3+ consecutive days
+      const motivationStreak = (() => {
+        let streak = 0;
+        for (let i = datesSorted.indexOf(selectedDate) - 1; i >= 0; i--) {
+          const d = datesSorted[i];
+          const dd = dailyData[d]; if (!dd) break;
+          const v = Number(dd.motivation);
+          if (!v) break;
+          const vals = datesSorted.slice(0, i).map(x => Number(dailyData[x]?.motivation) || 0).filter(x => x > 0);
+          const stats = rollingStats(vals);
+          if (!stats) break;
+          if (zScore(v, stats.mean, stats.sd) > 0.5) streak++;
+          else break;
+        }
+        return streak;
+      })();
+      if (motivationStreak >= 3) cues.push({ text: `Motivation above your norm ${motivationStreak} days running` });
+
+      return cues;
+    };
+    return getPositiveCues();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dailyData, selectedDate, datesSorted, todayEWMA]);
   const shiftDate = (days) => { const d = new Date(selectedDate + "T12:00:00"); d.setDate(d.getDate() + days); setSelectedDate(d.toISOString().slice(0, 10)); };
 
   const showStatus = (type, msg) => {
@@ -877,7 +977,7 @@ export default function ClimbingTracker() {
         </div>
       </div>}
       <main className="max-w-2xl mx-auto px-4 py-4 pb-24">
-        {tab === "today" && <TodayView {...{ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, sessionLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }} />}
+        {tab === "today" && <TodayView {...{ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, sessionLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }} />}
         {tab === "climbs" && <ClimbView {...{ selectedDate, shiftDate, climbData, setClimbData, settings, dailyData, setDailyData }} />}
         {tab === "assess" && <AssessView {...{ assessData, setAssessData, settings }} />}
         {tab === "injury" && <InjuryView {...{ injuryData, setInjuryData, dailyData, ewmaData, datesSorted }} />}
@@ -985,7 +1085,7 @@ function getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedD
   return null;
 }
 
-function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, sessionLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }) {
+function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, sessionLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }) {
   const [mode, setMode] = useState("quick"); // "quick" or "full"
   const [section, setSection] = useState("wellness");
   const isToday = selectedDate === todayStr();
@@ -1062,6 +1162,13 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
               <div className="text-[10px] text-emerald-500 italic mt-1">
                 • {readiness.positiveItems.map((item, i) => (
                   <span key={i}>{i > 0 && " · "}{item.label} {item.arrow} (+{item.z} SD)</span>
+                ))}
+              </div>
+            )}
+            {positiveCues?.length > 0 && (
+              <div className="mt-2 space-y-0.5">
+                {positiveCues.map((cue, i) => (
+                  <div key={i} className="text-[10px] text-emerald-500">• {cue.text}</div>
                 ))}
               </div>
             )}
