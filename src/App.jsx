@@ -1146,11 +1146,11 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
         <div className="flex items-center justify-between">
           <div className="flex-1">
             <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Readiness</div>
-            <div className={`text-sm font-semibold ${readiness.color === "green" ? "text-emerald-400" : readiness.color === "yellow" ? "text-amber-400" : readiness.color === "red" ? "text-red-400" : "text-slate-400"}`}>
+            <div className={`text-sm font-semibold ${readiness.color === "green" ? "text-emerald-400" : readiness.color === "yellow" ? "text-amber-400" : readiness.color === "red" ? "text-red-400" : "text-slate-200"}`}>
               {readiness.summary}
             </div>
             {readiness.items?.length > 0 && (
-              <div className="text-[10px] text-slate-500 italic mt-1">
+              <div className={`text-[10px] italic mt-1 ${readiness.color === "red" ? "text-red-400" : "text-amber-400"}`}>
                 • {readiness.items.map((item, i) => (
                   <span key={i}>{i > 0 && " · "}{item.label} {item.arrow} {item.z !== null ? `(${item.z > 0 ? "+" : ""}${item.z} SD)` : item.pct !== null ? `(${item.pct}%)` : ""}</span>
                 ))}
