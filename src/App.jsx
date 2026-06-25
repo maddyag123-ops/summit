@@ -868,41 +868,43 @@ function nudgeVariants({ profile, assessData, settings }) {
   const isMasters = age !== null && age >= 35;
   const mlPerKg = isMale ? 38 : 35;
   const hydrationBaseline = Math.round(bwKg * mlPerKg);
-  const bwSource = profile?.bodyweight ? '' :
-    recentBodyweight ? ' (from last assessment)' :
-    ' (based on 70kg default — add your weight in Profile for personalised targets)';
+  const bwSource = profile?.bodyweight
+    ? ` (weight: ${Math.round(bwKg)}kg from profile)`
+    : recentBodyweight
+      ? ` (weight: ${Math.round(bwKg)}kg from last assessment)`
+      : ` (weight: ${Math.round(bwKg)}kg default — add yours in Profile)`;
   return {
     'rest-high-load': [
-      { text: `Load has been running hot for several days. Full rest today lets adaptation catch up. Aim for ${Math.round(bwKg * 1.6)}g protein today to support tissue repair.${bwSource}`, citation: 'Morton et al. (2018), Br J Sports Med' },
-      { text: `EWMA ratio is elevated and markers are flagged. A rest day now returns more than another session. Target ${Math.round(bwKg * 1.6)}g protein distributed across meals today.${bwSource}`, citation: 'Morton et al. (2018), Br J Sports Med' },
+      { text: `Load has been running hot for several days. Full rest today lets adaptation catch up. Aim for ${Math.round(bwKg * 1.6)}g (1.6g/kg × ${Math.round(bwKg)}kg) protein today to support tissue repair.${bwSource}`, citation: 'Morton et al. (2018), Br J Sports Med' },
+      { text: `EWMA ratio is elevated and markers are flagged. A rest day now returns more than another session. Target ${Math.round(bwKg * 1.6)}g (1.6g/kg × ${Math.round(bwKg)}kg) protein distributed across meals today.${bwSource}`, citation: 'Morton et al. (2018), Br J Sports Med' },
     ],
     'hydration-hot-conditions': [
-      { text: `Hot conditions flagged. Daily fluid baseline: ${hydrationBaseline}ml (${bwKg}kg × ${mlPerKg}ml/kg). Add 500–750ml per hour of climbing on top of that.${bwSource}`, citation: 'Sawka et al. (2007), Med Sci Sports Ex' },
-      { text: `Heat increases sweat rate and reduces grip endurance faster than most athletes expect. Start well hydrated — ${hydrationBaseline}ml baseline today plus extra during climbing.${bwSource}`, citation: 'Judelson et al. (2007), Sports Medicine' },
+      { text: `Hot conditions flagged. Daily fluid baseline: ${hydrationBaseline}ml (${Math.round(bwKg)}kg × ${mlPerKg}ml/kg). Add 500–750ml per hour of climbing on top of that.${bwSource}`, citation: 'Sawka et al. (2007), Med Sci Sports Ex' },
+      { text: `Heat increases sweat rate and reduces grip endurance faster than most athletes expect. Start well hydrated — ${hydrationBaseline}ml (${Math.round(bwKg)}kg × ${mlPerKg}ml/kg) baseline today plus extra during climbing.${bwSource}`, citation: 'Judelson et al. (2007), Sports Medicine' },
     ],
     'hydration-force-drop': [
-      { text: `Force marker has dropped several days running. Daily fluid target: ${hydrationBaseline}ml (${bwKg}kg × ${mlPerKg}ml/kg). Add 500–750ml per session hour.${bwSource}`, citation: 'Judelson et al. (2007), Sports Medicine' },
-      { text: `A multi-day force decline often tracks with hydration before anything else. Worth ruling out with ${hydrationBaseline}ml today before assuming accumulated fatigue.${bwSource}`, citation: 'Judelson et al. (2007), Sports Medicine' },
+      { text: `Force marker has dropped several days running. Daily fluid target: ${hydrationBaseline}ml (${Math.round(bwKg)}kg × ${mlPerKg}ml/kg). Add 500–750ml per session hour.${bwSource}`, citation: 'Judelson et al. (2007), Sports Medicine' },
+      { text: `A multi-day force decline often tracks with hydration before anything else. Worth ruling out with ${hydrationBaseline}ml (${Math.round(bwKg)}kg × ${mlPerKg}ml/kg) today before assuming accumulated fatigue.${bwSource}`, citation: 'Judelson et al. (2007), Sports Medicine' },
     ],
     'nutrition-rest-day': [
-      { text: `Rest days are active recovery for tendons. Target ${Math.round(bwKg * 0.4)}g protein per meal across 4–5 meals today (${Math.round(bwKg * 1.6)}–${Math.round(bwKg * 2.0)}g total).${isMasters ? ` At ${age}, lean toward the upper end — protein utilisation shifts with age.` : ''}${bwSource}`, citation: 'Morton et al. (2018), Br J Sports Med' },
-      { text: `Don't let protein intake drop on rest days — connective tissue repair is most active now. ${Math.round(bwKg * 0.4)}g per meal is the target dose.${bwSource}`, citation: 'Stokes et al. (2018), Nutrients' },
+      { text: `Rest days are active recovery for tendons. Target ${Math.round(bwKg * 0.4)}g (0.4g/kg × ${Math.round(bwKg)}kg) protein per meal across 4–5 meals today (${Math.round(bwKg * 1.6)}–${Math.round(bwKg * 2.0)}g total, 1.6–2.0g/kg × ${Math.round(bwKg)}kg).${isMasters ? ` At ${age}, lean toward the upper end — protein utilisation shifts with age.` : ''}${bwSource}`, citation: 'Morton et al. (2018), Br J Sports Med' },
+      { text: `Don't let protein intake drop on rest days — connective tissue repair is most active now. ${Math.round(bwKg * 0.4)}g (0.4g/kg × ${Math.round(bwKg)}kg) per meal is the target dose.${bwSource}`, citation: 'Stokes et al. (2018), Nutrients' },
     ],
     'rest-deload': [
-      { text: `Load is below your usual baseline. Good time to catch up on sleep debt and keep protein consistent at ${Math.round(bwKg * 1.6)}g daily.${bwSource}`, citation: 'Watson (2017), Curr Sports Med Reports' },
-      { text: `You're in a lighter load phase. Prioritise 8–9h sleep and consistent protein (${Math.round(bwKg * 1.6)}g/day) — deload weeks are where training blocks are consolidated.${bwSource}`, citation: 'Watson (2017), Curr Sports Med Reports' },
+      { text: `Load is below your usual baseline. Good time to catch up on sleep debt and keep protein consistent at ${Math.round(bwKg * 1.6)}g (1.6g/kg × ${Math.round(bwKg)}kg) daily.${bwSource}`, citation: 'Watson (2017), Curr Sports Med Reports' },
+      { text: `You're in a lighter load phase. Prioritise 8–9h sleep and consistent protein (${Math.round(bwKg * 1.6)}g/day, 1.6g/kg × ${Math.round(bwKg)}kg) — deload weeks are where training blocks are consolidated.${bwSource}`, citation: 'Watson (2017), Curr Sports Med Reports' },
     ],
     'rest-low-sleep': [
       { text: `Short sleep logged. Grip strength, reaction time, and injury resilience all decline measurably with sleep debt. Consider reducing intensity rather than volume today.`, citation: 'Watson (2017), Curr Sports Med Reports' },
       { text: `Sleep debt affects grip and decision-making on the wall more than most athletes expect. A technique-focused session is a better return than pushing hard on short rest.`, citation: 'Watson (2017), Curr Sports Med Reports' },
     ],
     'nutrition-carb-window': [
-      { text: `Heavy session yesterday. Carbohydrate replenishment window is 0–24h — target ${Math.round(bwKg * 1.0)}–${Math.round(bwKg * 1.2)}g carbs today (${bwKg}kg × 1.0–1.2g/kg).${bwSource}`, citation: 'Burke et al. (2011), J Sports Sciences' },
-      { text: `Yesterday's load drew down glycogen stores. Today's carb intake (${Math.round(bwKg * 1.0)}–${Math.round(bwKg * 1.2)}g) matters more than usual for tomorrow's session quality.${bwSource}`, citation: 'Burke et al. (2011), J Sports Sciences' },
+      { text: `Heavy session yesterday. Carbohydrate replenishment window is 0–24h — target ${Math.round(bwKg * 1.0)}–${Math.round(bwKg * 1.2)}g carbs today (1.0–1.2g/kg × ${Math.round(bwKg)}kg).${bwSource}`, citation: 'Burke et al. (2011), J Sports Sciences' },
+      { text: `Yesterday's load drew down glycogen stores. Today's carb intake (${Math.round(bwKg * 1.0)}–${Math.round(bwKg * 1.2)}g, 1.0–1.2g/kg × ${Math.round(bwKg)}kg) matters more than usual for tomorrow's session quality.${bwSource}`, citation: 'Burke et al. (2011), J Sports Sciences' },
     ],
     'hydration-load-spike': [
-      { text: `Training load trending above baseline. Daily fluid target: ${hydrationBaseline}ml minimum.${bwSource}`, citation: 'Sawka et al. (2007), Med Sci Sports Ex' },
-      { text: `Load is above your usual baseline. Keep fluid intake at ${hydrationBaseline}ml/day — don't let hydration stay flat while volume climbs.${bwSource}`, citation: 'Judelson et al. (2007), Sports Medicine' },
+      { text: `Training load trending above baseline. Daily fluid target: ${hydrationBaseline}ml (${Math.round(bwKg)}kg × ${mlPerKg}ml/kg) minimum.${bwSource}`, citation: 'Sawka et al. (2007), Med Sci Sports Ex' },
+      { text: `Load is above your usual baseline. Keep fluid intake at ${hydrationBaseline}ml/day (${Math.round(bwKg)}kg × ${mlPerKg}ml/kg) — don't let hydration stay flat while volume climbs.${bwSource}`, citation: 'Judelson et al. (2007), Sports Medicine' },
     ],
   };
 }
