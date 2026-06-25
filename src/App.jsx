@@ -706,9 +706,7 @@ export default function ClimbingTracker() {
       if (!stats || stats.sd === 0) return;
       const z = zScore(currentVal, stats.mean, stats.sd);
       if (z > 1.0) {
-        const arrow = z > 1.5
-          ? (item.invertArrow ? "↓↓" : "↑↑")
-          : (item.invertArrow ? "↓" : "↑");
+        const arrow = item.invertArrow ? "↓" : "↑";
         positiveItems.push({ label: item.label, arrow, z });
       }
     });
@@ -1159,7 +1157,7 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
               </div>
             )}
             {readiness.positiveItems?.length > 0 && (
-              <div className="text-[10px] text-emerald-500 italic mt-1">
+              <div className="text-[10px] text-emerald-500 mt-1">
                 • {readiness.positiveItems.map((item, i) => (
                   <span key={i}>{i > 0 && " · "}{item.label} {item.arrow} (+{item.z} SD)</span>
                 ))}
