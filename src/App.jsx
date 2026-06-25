@@ -66,6 +66,21 @@ function computeEWMA(data, dates) {
   return r;
 }
 
+function computeFingerEWMA(data, dates) {
+  const lA = .25, lC = .069; let a = 0, c = 0, r = {};
+  dates.forEach((d, i) => {
+    const sessions = data[d]?.sessions || [];
+    const l = sessions.reduce((sum, s) => {
+      if (!FINGER_SESSIONS.includes(s.sessionType) || !s.sessionDuration || !s.sessionRPE) return sum;
+      return sum + (Number(s.sessionDuration) || 0) * (Number(s.sessionRPE) || 0);
+    }, 0);
+    if (i === 0) { a = l; c = l; }
+    else { a = lA * l + (1 - lA) * a; c = lC * l + (1 - lC) * c; }
+    r[d] = { acute: Math.round(a * 10) / 10, chronic: Math.round(c * 10) / 10, ratio: c > 0 ? Math.round(a / c * 100) / 100 : 0 };
+  });
+  return r;
+}
+
 const hoursToScore = (h) => { const n = Number(h); if (!n || n <= 0) return 0; if (n < 4) return 1; if (n < 5) return 2; if (n < 5.5) return 3; if (n < 6) return 4; if (n < 6.5) return 5; if (n < 7) return 6; if (n < 7.5) return 7; if (n < 8) return 8; if (n < 9) return 9; return 10; };
 
 const dayMarkerAvg = (dd, type) => {
@@ -120,6 +135,13 @@ const SEND_TYPES = ["Redpoint", "Flash", "Onsight", "Attempt", "Hang", "Project"
 const CLIMB_TYPES = ["Bouldering — Power", "Bouldering — Power Endurance", "Sport Climbing — Rope", "Sport Climbing — Circuit", "Hangboard", "Conditioning", "Antagonist", "Cardio", "Other"];
 const SESSION_TYPES = [...CLIMB_TYPES, "Rest"];
 const OUTDOOR_SESSION_TYPES = new Set(["Bouldering — Power", "Bouldering — Power Endurance", "Sport Climbing — Rope"]);
+const FINGER_SESSIONS = [
+  "Bouldering — Power",
+  "Bouldering — Power Endurance",
+  "Sport Climbing — Rope",
+  "Sport Climbing — Circuit",
+  "Hangboard",
+];
 const CONDITION_COLORS = { Hot: "bg-amber-500/20 text-amber-300 border-amber-500/30", Warm: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30", Cool: "bg-sky-500/20 text-sky-300 border-sky-500/30", Cold: "bg-violet-500/20 text-violet-300 border-violet-500/30" };
 const CLIMBING_SESSION_TYPES = new Set(["Bouldering — Power", "Bouldering — Power Endurance", "Sport Climbing — Rope", "Sport Climbing — Circuit"]);
 const WALL_ANGLES = ["Slab", "Vertical", "Slight OH", "Steep OH", "Roof"];
@@ -605,6 +627,30 @@ export default function ClimbingTracker() {
 
   const datesSorted = useMemo(() => Object.keys(dailyData).sort(), [dailyData]);
   const ewmaData = useMemo(() => computeEWMA(dailyData, datesSorted), [dailyData, datesSorted]);
+  const fingerEWMAData = useMemo(() => computeFingerEWMA(dailyData, datesSorted), [dailyData, datesSorted]);
+
+  const fingerLoad = useMemo(() => {
+    const sessions = day.sessions?.length > 0 ? day.sessions : daySessions;
+    return sessions.reduce((sum, s) => {
+      if (!FINGER_SESSIONS.includes(s.sessionType) || !s.sessionDuration || !s.sessionRPE) return sum;
+      return sum + (Number(s.sessionDuration) || 0) * (Number(s.sessionRPE) || 0);
+    }, 0);
+  }, [day, daySessions]);
+
+  const weekOnOffSplit = useMemo(() => {
+    const last7 = datesSorted.slice(-7);
+    let onWall = 0, offWall = 0;
+    last7.forEach(d => {
+      const sessions = dailyData[d]?.sessions || [];
+      sessions.forEach(s => {
+        if (!s.sessionDuration || s.sessionType === "Rest") return;
+        if (FINGER_SESSIONS.includes(s.sessionType)) onWall += Number(s.sessionDuration) || 0;
+        else offWall += Number(s.sessionDuration) || 0;
+      });
+    });
+    const total = onWall + offWall;
+    return total > 0 ? { onWall: Math.round(onWall / total * 100), offWall: Math.round(offWall / total * 100) } : null;
+  }, [dailyData, datesSorted]);
   const todayEWMA = ewmaData[selectedDate] || { acute: 0, chronic: 0, ratio: 0 };
 
   const readiness = useMemo(() => {
@@ -975,11 +1021,11 @@ export default function ClimbingTracker() {
         </div>
       </div>}
       <main className="max-w-2xl mx-auto px-4 py-4 pb-24">
-        {tab === "today" && <TodayView {...{ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, sessionLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }} />}
+        {tab === "today" && <TodayView {...{ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }} />}
         {tab === "climbs" && <ClimbView {...{ selectedDate, shiftDate, climbData, setClimbData, settings, dailyData, setDailyData }} />}
         {tab === "assess" && <AssessView {...{ assessData, setAssessData, settings }} />}
         {tab === "injury" && <InjuryView {...{ injuryData, setInjuryData, dailyData, ewmaData, datesSorted }} />}
-        {tab === "dashboard" && <DashboardView {...{ dailyData, ewmaData, datesSorted, assessData, climbData }} />}
+        {tab === "dashboard" && <DashboardView {...{ dailyData, ewmaData, fingerEWMAData, weekOnOffSplit, datesSorted, assessData, climbData }} />}
         {tab === "coach" && <CoachView {...{ coachUsers, currentUser: displayName, loadUserData, coachViewUser, setCoachViewUser, coachData, setCoachData }} />}
       </main>
       <nav className="fixed bottom-0 left-0 right-0 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800/50 z-50">
@@ -1083,7 +1129,7 @@ function getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedD
   return null;
 }
 
-function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, sessionLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }) {
+function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }) {
   const [mode, setMode] = useState("quick"); // "quick" or "full"
   const [section, setSection] = useState("wellness");
   const isToday = selectedDate === todayStr();
@@ -1174,7 +1220,14 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
           <div className="text-right space-y-1 ml-3">
             <div className="text-[10px] text-slate-500">Wellness</div>
             <div className="text-xl font-bold font-mono">{wellnessCount === 6 ? wellnessTotal : "—"}<span className="text-sm text-slate-600">/60</span></div>
-            {sessionLoad > 0 && <><div className="text-[10px] text-slate-500 mt-2">Load</div><div className="text-lg font-bold text-sky-400 font-mono">{sessionLoad}<span className="text-xs text-slate-600"> AU</span></div></>}
+            {sessionLoad > 0 && <>
+              <div className="text-[10px] text-slate-500 mt-2">Total Load</div>
+              <div className="text-lg font-bold text-sky-400 font-mono">{sessionLoad}<span className="text-xs text-slate-600"> AU</span></div>
+              {fingerLoad > 0 && fingerLoad < sessionLoad && <>
+                <div className="text-[10px] text-slate-500 mt-1">Finger Load</div>
+                <div className="text-sm font-bold text-amber-400 font-mono">{fingerLoad}<span className="text-xs text-slate-600"> AU</span></div>
+              </>}
+            </>}
           </div>
         </div>
         {readiness.isBaseline && (
@@ -1834,11 +1887,18 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
 }
 
 // ─── DASHBOARD VIEW ───
-function DashboardView({ dailyData, ewmaData, datesSorted, assessData, climbData }) {
+function DashboardView({ dailyData, ewmaData, fingerEWMAData, weekOnOffSplit, datesSorted, assessData, climbData }) {
   const [chart, setChart] = useState("ewma");
   const [range, setRange] = useState(60);
   const rangeDates = range === "all" ? datesSorted : datesSorted.slice(-range);
-  const ewmaCD = useMemo(() => rangeDates.map(d => ({ date: fmtShort(d), acute: ewmaData[d]?.acute || 0, chronic: ewmaData[d]?.chronic || 0, ratio: ewmaData[d]?.ratio || 0 })), [rangeDates, ewmaData]);
+  const ewmaCD = useMemo(() => rangeDates.map(d => ({
+    date: fmtShort(d),
+    acute: ewmaData[d]?.acute || 0,
+    chronic: ewmaData[d]?.chronic || 0,
+    ratio: ewmaData[d]?.ratio || 0,
+    fingerAcute: fingerEWMAData[d]?.acute || 0,
+    fingerChronic: fingerEWMAData[d]?.chronic || 0,
+  })), [rangeDates, ewmaData, fingerEWMAData]);
   const wellCD = useMemo(() => rangeDates.map(d => { const dd = dailyData[d]; if (!dd) return null; const ss = hoursToScore(dd.sleepDuration); const v = [dd.sleepQuality, ss || "", dd.soreness, dd.fingerSoreness, dd.stress, dd.motivation].filter(x => x !== "" && x !== 0); if (v.length !== 6) return null; return { date: fmtShort(d), wellness: v.reduce((a, b) => a + Number(b), 0) }; }).filter(Boolean), [rangeDates, dailyData]);
   const forceCD = useMemo(() => rangeDates.map(d => { const dd = dailyData[d]; if (!dd) return null; const gf = gripFields("tindeq", dd.tindeqGripType, dd.tindeqIntensity); const tL = Number(dd[gf.L]) || Number(dd.tindeqPeakL) || null; const tR = Number(dd[gf.R]) || Number(dd.tindeqPeakR) || null; const gL = Number(dd.gripL) || null; const gR = Number(dd.gripR) || null; const tAvg = (tL && tR) ? Math.round((tL + tR) / 2 * 10) / 10 : null; const gAvg = (gL && gR) ? Math.round((gL + gR) / 2 * 10) / 10 : null; if (!tL && !tR && !gL && !gR) return null; return { date: fmtShort(d), tindeqL: tL, tindeqR: tR, tindeqAvg: tAvg, gripL: gL, gripR: gR, gripAvg: gAvg }; }).filter(Boolean), [rangeDates, dailyData]);
   const styleCostCD = useMemo(() => { const byStyle = {}; Object.values(climbData).forEach(dc => { const blAvg = (dc.baselineInstrument === "Dynamometer") ? avg(dc.baselineGripL, dc.baselineGripR) : avg(dc.baselineL, dc.baselineR); dc.climbs?.forEach(c => { const cgf = gripFields("post", c.tindeqGripType, c.tindeqIntensity); const postAvg = c.instrument === "Dynamometer" ? avg(c.postGripL, c.postGripR) : (avg(c[cgf.L], c[cgf.R]) || avg(c.postPeakL, c.postPeakR)); if (!blAvg || !postAvg) return; const cost = Math.round(((blAvg - postAvg) / blAvg) * 100); (c.styles || []).forEach(s => { if (!byStyle[s]) byStyle[s] = []; byStyle[s].push(cost); }); }); }); return Object.entries(byStyle).map(([style, costs]) => ({ style, avgCost: Math.round(costs.reduce((a, b) => a + b, 0) / costs.length), count: costs.length })).sort((a, b) => b.avgCost - a.avgCost); }, [climbData]);
@@ -1903,6 +1963,13 @@ function DashboardView({ dailyData, ewmaData, datesSorted, assessData, climbData
         <Card className="text-center py-3 px-1"><div className="text-[10px] text-slate-500 uppercase">Climbs</div><div className="text-lg font-bold text-emerald-400 font-mono">{totalClimbs}</div></Card>
         <Card className="text-center py-3 px-1"><div className="text-[10px] text-slate-500 uppercase">Sends</div><div className="text-lg font-bold text-amber-400 font-mono">{totalSends}</div></Card>
         <Card className="text-center py-3 px-1"><div className="text-[10px] text-slate-500 uppercase">Streak</div><div className={`text-lg font-bold font-mono ${currentStreak >= 7 ? "text-emerald-400" : currentStreak >= 3 ? "text-sky-400" : currentStreak > 0 ? "text-slate-300" : "text-slate-600"}`}>{currentStreak}<span className="text-xs text-slate-600">d</span></div></Card>
+        {weekOnOffSplit && <Card className="text-center py-3 px-2">
+          <div className="text-[10px] text-slate-500 uppercase">This Week</div>
+          <div className="text-lg font-bold text-sky-400">{weekOnOffSplit.onWall}%</div>
+          <div className="text-[10px] text-slate-500">On Wall</div>
+          <div className="text-sm font-bold text-slate-400">{weekOnOffSplit.offWall}%</div>
+          <div className="text-[10px] text-slate-500">Off Wall</div>
+        </Card>}
       </div>
       {(personalRecords.bestSport || personalRecords.bestBoulder || personalRecords.bestForce || personalRecords.bestMaxHang) && (
         <Card>
@@ -1917,7 +1984,7 @@ function DashboardView({ dailyData, ewmaData, datesSorted, assessData, climbData
       )}
       <div className="flex gap-1 bg-slate-900/50 rounded-xl p-1 flex-wrap">{tabs.map(t => <button key={t.id} onClick={() => setChart(t.id)} className={`flex-1 py-2 rounded-lg text-[10px] font-semibold transition-all min-w-0 ${chart === t.id ? "bg-slate-700/60 text-white" : "text-slate-500 hover:text-slate-300"}`}>{t.l}</button>)}</div>
       <Card className="p-3">
-        {chart === "ewma" && <>{ewmaCD.length > 1 ? <><div className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">EWMA Acute vs Chronic</div><ResponsiveContainer width="100%" height={240}><LineChart data={ewmaCD} margin={{ top: 5, right: 5, bottom: 5, left: -15 }}><CartesianGrid strokeDasharray="3 3" stroke="#1e293b" /><XAxis dataKey="date" tick={{ fill: "#64748b", fontSize: 9 }} interval="preserveStartEnd" /><YAxis tick={{ fill: "#64748b", fontSize: 9 }} /><Tooltip contentStyle={ttStyle} /><Legend wrapperStyle={{ fontSize: 10 }} /><Line type="monotone" dataKey="acute" stroke="#38bdf8" strokeWidth={2} dot={false} name="Acute" /><Line type="monotone" dataKey="chronic" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={false} name="Chronic" /></LineChart></ResponsiveContainer></> : <div className="text-center text-slate-600 py-12 text-sm">Log 2+ days</div>}</>}
+        {chart === "ewma" && <>{ewmaCD.length > 1 ? <><div className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">EWMA Acute vs Chronic</div><ResponsiveContainer width="100%" height={240}><LineChart data={ewmaCD} margin={{ top: 5, right: 5, bottom: 5, left: -15 }}><CartesianGrid strokeDasharray="3 3" stroke="#1e293b" /><XAxis dataKey="date" tick={{ fill: "#64748b", fontSize: 9 }} interval="preserveStartEnd" /><YAxis tick={{ fill: "#64748b", fontSize: 9 }} /><Tooltip contentStyle={ttStyle} /><Legend wrapperStyle={{ fontSize: 10 }} /><Line type="monotone" dataKey="acute" stroke="#38bdf8" strokeWidth={2} dot={false} name="Acute" /><Line type="monotone" dataKey="chronic" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={false} name="Chronic" /><Line type="monotone" dataKey="fingerAcute" stroke="#FBBF24" strokeWidth={1.5} strokeDasharray="4 4" dot={false} name="Finger Acute" /><Line type="monotone" dataKey="fingerChronic" stroke="#F59E0B" strokeWidth={1} strokeDasharray="4 4" dot={false} name="Finger Chronic" /></LineChart></ResponsiveContainer></> : <div className="text-center text-slate-600 py-12 text-sm">Log 2+ days</div>}</>}
         {chart === "wellness" && <>{wellCD.length > 1 ? <><div className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">Daily Wellness (/60)</div><ResponsiveContainer width="100%" height={240}><LineChart data={wellCD} margin={{ top: 5, right: 5, bottom: 5, left: -15 }}><CartesianGrid strokeDasharray="3 3" stroke="#1e293b" /><XAxis dataKey="date" tick={{ fill: "#64748b", fontSize: 9 }} interval="preserveStartEnd" /><YAxis domain={[0, 60]} tick={{ fill: "#64748b", fontSize: 9 }} /><Tooltip contentStyle={ttStyle} /><Line type="monotone" dataKey="wellness" stroke="#22c55e" strokeWidth={2} dot={false} /></LineChart></ResponsiveContainer></> : <div className="text-center text-slate-600 py-12 text-sm">Log wellness</div>}</>}
         {chart === "force" && <>{forceCD.length > 1 ? <><div className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">Daily Force — Left / Right / Average</div><ResponsiveContainer width="100%" height={280}><LineChart data={forceCD} margin={{ top: 5, right: 5, bottom: 5, left: -15 }}><CartesianGrid strokeDasharray="3 3" stroke="#1e293b" /><XAxis dataKey="date" tick={{ fill: "#64748b", fontSize: 9 }} interval="preserveStartEnd" /><YAxis tick={{ fill: "#64748b", fontSize: 9 }} /><Tooltip contentStyle={ttStyle} /><Legend wrapperStyle={{ fontSize: 10 }} />{forceCD.some(d => d.tindeqL) && <Line type="monotone" dataKey="tindeqL" stroke="#38bdf8" strokeWidth={1.5} dot={false} name="Tindeq L" />}{forceCD.some(d => d.tindeqR) && <Line type="monotone" dataKey="tindeqR" stroke="#0ea5e9" strokeWidth={1.5} dot={false} name="Tindeq R" />}{forceCD.some(d => d.tindeqAvg) && <Line type="monotone" dataKey="tindeqAvg" stroke="#7dd3fc" strokeWidth={2} strokeDasharray="6 3" dot={false} name="Tindeq Avg" />}{forceCD.some(d => d.gripL) && <Line type="monotone" dataKey="gripL" stroke="#a78bfa" strokeWidth={1.5} dot={false} name="Grip L" />}{forceCD.some(d => d.gripR) && <Line type="monotone" dataKey="gripR" stroke="#8b5cf6" strokeWidth={1.5} dot={false} name="Grip R" />}{forceCD.some(d => d.gripAvg) && <Line type="monotone" dataKey="gripAvg" stroke="#c4b5fd" strokeWidth={2} strokeDasharray="6 3" dot={false} name="Grip Avg" />}</LineChart></ResponsiveContainer></> : <div className="text-center text-slate-600 py-12 text-sm">Log force</div>}</>}
         {chart === "style" && <>{styleCostCD.length > 0 ? <><div className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">Avg Force Cost by Style</div><ResponsiveContainer width="100%" height={240}><BarChart data={styleCostCD} layout="vertical" margin={{ top: 5, right: 20, bottom: 5, left: 5 }}><CartesianGrid strokeDasharray="3 3" stroke="#1e293b" /><XAxis type="number" tick={{ fill: "#64748b", fontSize: 9 }} domain={[0, 'auto']} /><YAxis type="category" dataKey="style" tick={{ fill: "#94a3b8", fontSize: 10 }} width={80} /><Tooltip contentStyle={ttStyle} formatter={(v, n, p) => [`${v}% (${p.payload.count} climbs)`, "Avg Cost"]} /><Bar dataKey="avgCost" fill="#f59e0b" radius={[0, 4, 4, 0]} /></BarChart></ResponsiveContainer></> : <div className="text-center text-slate-600 py-12 text-sm">Log climbs with styles + force</div>}</>}
