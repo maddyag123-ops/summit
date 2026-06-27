@@ -629,6 +629,38 @@ export default function ClimbingTracker() {
   const ewmaData = useMemo(() => computeEWMA(dailyData, datesSorted), [dailyData, datesSorted]);
   const fingerEWMAData = useMemo(() => computeFingerEWMA(dailyData, datesSorted), [dailyData, datesSorted]);
 
+  const loadTrajectory = useMemo(() => {
+    const relevantDates = datesSorted.filter(d => d <= selectedDate);
+    const recentAcute = relevantDates.slice(-7).map(d => ewmaData[d]?.acute || 0);
+    if (recentAcute.filter(v => v > 0).length < 5) return null;
+
+    const slope = (recentAcute[recentAcute.length - 1] - recentAcute[0]) / recentAcute.length;
+
+    const historicalSlopes = [];
+    for (let i = 7; i < relevantDates.length; i++) {
+      const window = relevantDates.slice(i - 7, i).map(d => ewmaData[d]?.acute || 0);
+      if (window.filter(v => v > 0).length >= 5) {
+        historicalSlopes.push((window[window.length - 1] - window[0]) / 7);
+      }
+    }
+    if (historicalSlopes.length < 10) return null;
+
+    const stats = rollingStats(historicalSlopes);
+    if (!stats || stats.sd === 0) return null;
+
+    const z = zScore(slope, stats.mean, stats.sd);
+    if (z < 1.5) return null;
+
+    const arrow = z >= 2.0 ? "↑↑" : "↑";
+    const label = z >= 2.5
+      ? "exceptionally fast buildup vs your typical 7-day average"
+      : z >= 2.0
+        ? "unusually fast buildup vs your typical 7-day average"
+        : "building faster than your typical 7-day average";
+
+    return { z: Math.round(z * 10) / 10, arrow, label, isUnusual: true };
+  }, [ewmaData, datesSorted, selectedDate]);
+
   const fingerLoad = useMemo(() => {
     const sessions = day.sessions?.length > 0 ? day.sessions : daySessions;
     return sessions.reduce((sum, s) => {
@@ -737,6 +769,15 @@ export default function ClimbingTracker() {
 
     if (forceZFlag) flaggedItems.push(forceZFlag);
     if (hrvZFlag) flaggedItems.push(hrvZFlag);
+    if (loadTrajectory?.isUnusual) {
+      flaggedItems.push({
+        label: `Load rate ${loadTrajectory.arrow} (+${loadTrajectory.z} SD) — ${loadTrajectory.label}`,
+        arrow: null,
+        z: null,
+        pct: null,
+        fullLabel: true,
+      });
+    }
 
     // Positive markers detection
     const positiveItems = [];
@@ -757,7 +798,8 @@ export default function ClimbingTracker() {
       }
     });
 
-    const severeCount = flaggedItems.filter(i => i.arrow.length === 2).length;
+    const severeCount = flaggedItems.filter(i => i.arrow && i.arrow.length === 2).length
+      + (loadTrajectory?.z >= 2.0 ? 1 : 0);
     const totalFlagged = flaggedItems.length;
     const flagCount = totalFlagged;
     const positiveCount = positiveItems.length;
@@ -1066,7 +1108,7 @@ export default function ClimbingTracker() {
         </div>
       </div>}
       <main className="max-w-2xl mx-auto px-4 py-4 pb-24">
-        {tab === "today" && <TodayView {...{ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, restPattern, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }} />}
+        {tab === "today" && <TodayView {...{ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, restPattern, loadTrajectory, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }} />}
         {tab === "climbs" && <ClimbView {...{ selectedDate, shiftDate, climbData, setClimbData, settings, dailyData, setDailyData }} />}
         {tab === "assess" && <AssessView {...{ assessData, setAssessData, settings }} />}
         {tab === "injury" && <InjuryView {...{ injuryData, setInjuryData, dailyData, ewmaData, datesSorted }} />}
@@ -1174,7 +1216,7 @@ function getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedD
   return null;
 }
 
-function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, restPattern, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }) {
+function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, restPattern, loadTrajectory, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }) {
   const [mode, setMode] = useState("quick"); // "quick" or "full"
   const [section, setSection] = useState("wellness");
   const isToday = selectedDate === todayStr();
@@ -1243,7 +1285,12 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
             {readiness.items?.length > 0 && (
               <div className={`text-[10px] italic mt-1 ${readiness.color === "red" ? "text-red-400" : "text-amber-400"}`}>
                 • {readiness.items.map((item, i) => (
-                  <span key={i}>{i > 0 && " · "}{item.label} {item.arrow} {item.z !== null ? `(${item.z > 0 ? "+" : ""}${item.z} SD)` : item.pct !== null ? `(${item.pct}%)` : ""}</span>
+                  <span key={i}>{i > 0 && " · "}
+                    {item.fullLabel
+                      ? item.label
+                      : `${item.label} ${item.arrow} ${item.z !== null ? `(${item.z > 0 ? "+" : ""}${item.z} SD)` : item.pct !== null ? `(${item.pct}%)` : ""}`
+                    }
+                  </span>
                 ))}
               </div>
             )}
