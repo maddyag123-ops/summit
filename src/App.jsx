@@ -39,6 +39,7 @@ const emptyProfile = () => ({
   climbingYears: "", trainingYears: "", discipline: [], indoorOutdoorSplit: 50,
   onsightGradeSport: "", flashGradeBoulder: "", completed: false,
   nudgeState: {},
+  deloadWeeks: [],
 });
 
 async function loadUserData(userId) {
@@ -975,6 +976,64 @@ export default function ClimbingTracker() {
 
     return { daysSinceFullRest, daysSinceActiveRecovery, avgGap, deviation };
   }, [dailyData, datesSorted, selectedDate]);
+
+  const deloadStatus = useMemo(() => {
+    const weeklyLoads = {};
+    datesSorted.forEach(d => {
+      const date = new Date(d + "T12:00:00");
+      const day = date.getDay();
+      const monday = new Date(date);
+      monday.setDate(date.getDate() - (day === 0 ? 6 : day - 1));
+      const weekKey = monday.toISOString().slice(0, 10);
+      const sessions = dailyData[d]?.sessions || [];
+      const load = sessions.reduce((sum, s) => {
+        if (s.sessionType === "Rest" || !s.sessionDuration || !s.sessionRPE) return sum;
+        return sum + (Number(s.sessionDuration) || 0) * (Number(s.sessionRPE) || 0);
+      }, 0);
+      weeklyLoads[weekKey] = (weeklyLoads[weekKey] || 0) + load;
+    });
+
+    const weeks = Object.entries(weeklyLoads).sort(([a], [b]) => a.localeCompare(b));
+    if (weeks.length < 5) return { weeksSinceDeload: null, isCurrentDeload: false, deloadTargetLow: 0, deloadTargetHigh: 0, currentWeekKey: null };
+
+    const today = new Date(selectedDate + "T12:00:00");
+    const dayOfWeek = today.getDay();
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+    const currentWeekKey = monday.toISOString().slice(0, 10);
+
+    const isDeloadWeek = (weekKey, weekLoad) => {
+      const idx = weeks.findIndex(([k]) => k === weekKey);
+      if (idx < 4) return false;
+      const prev4 = weeks.slice(idx - 4, idx).map(([, l]) => l);
+      const avg = prev4.reduce((a, b) => a + b, 0) / 4;
+      if (avg === 0) return false;
+      const autoDetected = weekLoad < avg * 0.6;
+      const manuallyMarked = (profile?.deloadWeeks || []).includes(weekKey);
+      return autoDetected || manuallyMarked;
+    };
+
+    let weeksSinceDeload = 0;
+    const currentIdx = weeks.findIndex(([k]) => k === currentWeekKey);
+    const weeksToCheck = currentIdx >= 0 ? weeks.slice(0, currentIdx) : weeks;
+    for (let i = weeksToCheck.length - 1; i >= 0; i--) {
+      const [k, l] = weeksToCheck[i];
+      if (isDeloadWeek(k, l)) break;
+      weeksSinceDeload++;
+    }
+
+    const currentWeekLoad = weeklyLoads[currentWeekKey] || 0;
+    const isCurrentDeload = isDeloadWeek(currentWeekKey, currentWeekLoad);
+    const chronicLoad = ewmaData[selectedDate]?.chronic || 0;
+
+    return {
+      weeksSinceDeload,
+      isCurrentDeload,
+      deloadTargetLow: Math.round(chronicLoad * 0.5),
+      deloadTargetHigh: Math.round(chronicLoad * 0.6),
+      currentWeekKey,
+    };
+  }, [dailyData, datesSorted, selectedDate, ewmaData, profile]);
   const shiftDate = (days) => { const d = new Date(selectedDate + "T12:00:00"); d.setDate(d.getDate() + days); setSelectedDate(d.toISOString().slice(0, 10)); };
 
   const showStatus = (type, msg) => {
@@ -1108,7 +1167,7 @@ export default function ClimbingTracker() {
         </div>
       </div>}
       <main className="max-w-2xl mx-auto px-4 py-4 pb-24">
-        {tab === "today" && <TodayView {...{ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, restPattern, loadTrajectory, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }} />}
+        {tab === "today" && <TodayView {...{ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, restPattern, loadTrajectory, deloadStatus, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }} />}
         {tab === "climbs" && <ClimbView {...{ selectedDate, shiftDate, climbData, setClimbData, settings, dailyData, setDailyData }} />}
         {tab === "assess" && <AssessView {...{ assessData, setAssessData, settings }} />}
         {tab === "injury" && <InjuryView {...{ injuryData, setInjuryData, dailyData, ewmaData, datesSorted }} />}
@@ -1216,7 +1275,7 @@ function getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedD
   return null;
 }
 
-function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, restPattern, loadTrajectory, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }) {
+function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, restPattern, loadTrajectory, deloadStatus, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }) {
   const [mode, setMode] = useState("quick"); // "quick" or "full"
   const [section, setSection] = useState("wellness");
   const isToday = selectedDate === todayStr();
@@ -1347,6 +1406,30 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
             <span className="text-slate-600 ml-2">(avg {restPattern.avgGap}d)</span>
           </div>
         )}
+        {deloadStatus.weeksSinceDeload !== null &&
+          deloadStatus.weeksSinceDeload >= 4 &&
+          !deloadStatus.isCurrentDeload && (
+          <div className={`mt-2 text-[10px] ${deloadStatus.weeksSinceDeload >= 7 ? "text-red-400" : "text-amber-400"}`}>
+            {deloadStatus.weeksSinceDeload} weeks since last deload
+            {deloadStatus.deloadTargetLow > 0 && (
+              <span className="text-slate-600"> · target {deloadStatus.deloadTargetLow}–{deloadStatus.deloadTargetHigh} AU this week</span>
+            )}
+          </div>
+        )}
+        {deloadStatus.weeksSinceDeload !== null &&
+          deloadStatus.weeksSinceDeload >= 5 &&
+          !deloadStatus.isCurrentDeload && (
+          <button
+            onClick={() => {
+              const weeks = profile?.deloadWeeks || [];
+              const key = deloadStatus.currentWeekKey;
+              if (!key) return;
+              setProfile(p => ({ ...p, deloadWeeks: [...weeks, key] }));
+            }}
+            className="mt-1 text-[10px] text-sky-400 hover:text-sky-300">
+            Mark this week as deload →
+          </button>
+        )}
         {nudge && (
           <div className="mt-3 pt-3 border-t border-slate-700/30">
             <div className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${nudge.category === "Hydration" ? "text-sky-400" : nudge.category === "Nutrition" ? "text-amber-400" : "text-violet-400"}`}>{nudge.icon} {nudge.category}</div>
@@ -1429,6 +1512,27 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
           })}
           {daySessions.length > 0 && daySessions[0].sessionType !== "Rest" && (
             <button onClick={() => quickAddSession("")} className="mt-2 w-full py-1.5 text-[10px] text-slate-500 hover:text-sky-400 transition-all">+ Another session</button>
+          )}
+          {daySessions.length > 0 && daySessions[0]?.sessionType !== "Rest" && (
+            <button
+              onClick={() => {
+                const weeks = profile?.deloadWeeks || [];
+                const key = deloadStatus.currentWeekKey;
+                if (!key) return;
+                const updated = weeks.includes(key)
+                  ? weeks.filter(w => w !== key)
+                  : [...weeks, key];
+                setProfile(p => ({ ...p, deloadWeeks: updated }));
+              }}
+              className={`mt-2 w-full py-1.5 rounded-lg text-[10px] font-semibold transition-all border ${
+                (profile?.deloadWeeks || []).includes(deloadStatus.currentWeekKey)
+                  ? "bg-violet-500/20 text-violet-300 border-violet-500/30"
+                  : "bg-slate-900/40 text-slate-500 border-slate-700/30 hover:text-slate-300"
+              }`}>
+              {(profile?.deloadWeeks || []).includes(deloadStatus.currentWeekKey)
+                ? "✓ Marked as deload week"
+                : "Mark this as a deload week"}
+            </button>
           )}
           {sessionLoad > 0 && daySessions.length > 1 && <div className="mt-2 flex justify-between text-xs"><span className="text-slate-500">Total</span><span className="font-bold text-sky-400 font-mono">{sessionLoad} AU</span></div>}
         </Card>
