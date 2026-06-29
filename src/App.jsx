@@ -617,8 +617,8 @@ export default function ClimbingTracker() {
   }, [dailyData, selectedDate]);
 
   const sessionLoad = daySessions.reduce((total, s) => {
-    const l = (Number(s.sessionDuration) || 0) * (Number(s.sessionRPE) || 0);
-    return total + l;
+    if (s.sessionType === 'Rest' || !s.sessionDuration || !s.sessionRPE) return total;
+    return total + (Number(s.sessionDuration) || 0) * (Number(s.sessionRPE) || 0);
   }, 0);
 
   useEffect(() => {
@@ -1309,8 +1309,18 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
   const quickUpdateSession = (idx, f, v) => {
     setDailyData(prev => {
       const d = prev[selectedDate] || emptyDay();
+      if (f === 'sessionType' && v === 'Rest') {
+        // Rest day: single session, no load values
+        return { ...prev, [selectedDate]: { ...d, sessions: [{ ...emptySession(), sessionType: 'Rest' }] } };
+      }
       const sessions = [...(d.sessions?.length > 0 ? d.sessions : daySessions)];
-      sessions[idx] = { ...sessions[idx], [f]: v };
+      const updated = { ...sessions[idx], [f]: v };
+      if (f === 'sessionType') {
+        // Switching away from Rest or to a different type: clear load fields
+        updated.sessionDuration = '';
+        updated.sessionRPE = '';
+      }
+      sessions[idx] = updated;
       return { ...prev, [selectedDate]: { ...d, sessions } };
     });
   };
@@ -1612,8 +1622,16 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
           const updateSess = (f, v) => {
             setDailyData(prev => {
               const d = prev[selectedDate] || emptyDay();
+              if (f === 'sessionType' && v === 'Rest') {
+                return { ...prev, [selectedDate]: { ...d, sessions: [{ ...emptySession(), sessionType: 'Rest' }], sessionDuration: undefined, sessionRPE: undefined, sessionType: undefined } };
+              }
               const sessions = [...(d.sessions && d.sessions.length > 0 ? d.sessions : daySessions)];
-              sessions[idx] = { ...sessions[idx], [f]: v };
+              const updated = { ...sessions[idx], [f]: v };
+              if (f === 'sessionType') {
+                updated.sessionDuration = '';
+                updated.sessionRPE = '';
+              }
+              sessions[idx] = updated;
               return { ...prev, [selectedDate]: { ...d, sessions, sessionDuration: undefined, sessionRPE: undefined, sessionType: undefined } };
             });
           };
