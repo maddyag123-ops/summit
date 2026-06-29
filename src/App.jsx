@@ -505,7 +505,22 @@ export default function ClimbingTracker() {
         setTimeout(() => reject(new Error("timeout")), 6000)
       );
       const data = await Promise.race([loadUserData(uid), timeout]);
-      setDailyData(data.daily);
+      // Clean up stale Rest sessions that have leftover duration/RPE from before the fix
+      const cleanedDaily = {};
+      for (const [date, dayVal] of Object.entries(data.daily || {})) {
+        if (dayVal.sessions?.some(s => s.sessionType === 'Rest' && (s.sessionDuration || s.sessionRPE))) {
+          cleanedDaily[date] = {
+            ...dayVal,
+            sessions: dayVal.sessions.map(s =>
+              s.sessionType === 'Rest' ? { ...s, sessionDuration: '', sessionRPE: '' } : s
+            ),
+            sessionLoad: 0,
+          };
+        } else {
+          cleanedDaily[date] = dayVal;
+        }
+      }
+      setDailyData(cleanedDaily);
       setClimbData(data.climbs);
       setAssessData(data.assess);
       setInjuryData(data.injury);
@@ -620,6 +635,7 @@ export default function ClimbingTracker() {
     if (s.sessionType === 'Rest' || !s.sessionDuration || !s.sessionRPE) return total;
     return total + (Number(s.sessionDuration) || 0) * (Number(s.sessionRPE) || 0);
   }, 0);
+  console.log('[Summit] Sessions for today:', day.sessions, 'daySessions:', daySessions, 'sessionLoad:', sessionLoad);
 
   useEffect(() => {
     if (sessionLoad > 0 && dailyData[selectedDate]?.sessionLoad !== sessionLoad)
