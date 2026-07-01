@@ -521,6 +521,11 @@ export default function ClimbingTracker() {
         }
       }
       setDailyData(cleanedDaily);
+      // Persist cleaned data back so Supabase doesn't return stale Rest load values on next load
+      const hadStaleData = Object.keys(cleanedDaily).some(
+        date => data.daily[date] !== cleanedDaily[date]
+      );
+      if (hadStaleData) dbSet('daily_logs', uid, cleanedDaily);
       setClimbData(data.climbs);
       setAssessData(data.assess);
       setInjuryData(data.injury);
