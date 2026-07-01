@@ -63,7 +63,7 @@ const pctCalc = (post, bl) => (bl && post) ? Math.round((post / bl) * 100) : nul
 
 function computeEWMA(data, dates) {
   const lA = .25, lC = .069; let a = 0, c = 0, r = {};
-  dates.forEach((d, i) => { const l = data[d]?.sessionLoad || 0; if (i === 0) { a = l; c = l; } else { a = lA * l + (1 - lA) * a; c = lC * l + (1 - lC) * c; } r[d] = { acute: Math.round(a * 10) / 10, chronic: Math.round(c * 10) / 10, ratio: c > 0 ? Math.round(a / c * 100) / 100 : 0 }; });
+  dates.forEach((d, i) => { const sessions = data[d]?.sessions || []; const allRest = sessions.length > 0 && sessions.every(s => s.sessionType === 'Rest'); const l = allRest ? 0 : (data[d]?.sessionLoad || 0); if (i === 0) { a = l; c = l; } else { a = lA * l + (1 - lA) * a; c = lC * l + (1 - lC) * c; } r[d] = { acute: Math.round(a * 10) / 10, chronic: Math.round(c * 10) / 10, ratio: c > 0 ? Math.round(a / c * 100) / 100 : 0 }; });
   return r;
 }
 
@@ -1332,7 +1332,7 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
       const d = prev[selectedDate] || emptyDay();
       if (f === 'sessionType' && v === 'Rest') {
         // Rest day: single session, no load values
-        return { ...prev, [selectedDate]: { ...d, sessions: [{ ...emptySession(), sessionType: 'Rest' }] } };
+        return { ...prev, [selectedDate]: { ...d, sessions: [{ ...emptySession(), sessionType: 'Rest' }], sessionLoad: 0 } };
       }
       const sessions = [...(d.sessions?.length > 0 ? d.sessions : daySessions)];
       const updated = { ...sessions[idx], [f]: v };
@@ -1644,7 +1644,7 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
             setDailyData(prev => {
               const d = prev[selectedDate] || emptyDay();
               if (f === 'sessionType' && v === 'Rest') {
-                return { ...prev, [selectedDate]: { ...d, sessions: [{ ...emptySession(), sessionType: 'Rest' }], sessionDuration: undefined, sessionRPE: undefined, sessionType: undefined } };
+                return { ...prev, [selectedDate]: { ...d, sessions: [{ ...emptySession(), sessionType: 'Rest' }], sessionLoad: 0, sessionDuration: undefined, sessionRPE: undefined, sessionType: undefined } };
               }
               const sessions = [...(d.sessions && d.sessions.length > 0 ? d.sessions : daySessions)];
               const updated = { ...sessions[idx], [f]: v };
