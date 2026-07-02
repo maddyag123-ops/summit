@@ -1189,7 +1189,7 @@ export default function ClimbingTracker() {
       </div>}
       <main className="max-w-2xl mx-auto px-4 py-4 pb-24">
         {tab === "today" && <TodayView {...{ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, restPattern, loadTrajectory, deloadStatus, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }} />}
-        {tab === "climbs" && <ClimbView {...{ selectedDate, shiftDate, climbData, setClimbData, settings, dailyData, setDailyData }} />}
+        {tab === "climbs" && <ClimbView {...{ selectedDate, shiftDate, climbData, setClimbData, settings, dailyData, setDailyData, profile }} />}
         {tab === "assess" && <AssessView {...{ assessData, setAssessData, settings }} />}
         {tab === "injury" && <InjuryView {...{ injuryData, setInjuryData, dailyData, ewmaData, datesSorted }} />}
         {tab === "dashboard" && <DashboardView {...{ dailyData, ewmaData, fingerEWMAData, weekOnOffSplit, datesSorted, assessData, climbData }} />}
@@ -1702,15 +1702,19 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
 }
 
 // ─── CLIMB VIEW ───
-function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings, dailyData, setDailyData }) {
+function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings, dailyData, setDailyData, profile }) {
   const isToday = selectedDate === todayStr();
   const unit = settings.unit || "lbs";
-  const dc = climbData[selectedDate] || { baselineInstrument: settings.instrument, baselineL: "", baselineR: "", baselineGripL: "", baselineGripR: "", climbs: [] };
-  const [expanded, setExpanded] = useState(null);
+  const emptyDC = () => ({ baselineInstrument: settings.instrument, baselineL: "", baselineR: "", baselineGripL: "", baselineGripR: "", climbs: [] });
+  const dc = climbData[selectedDate] || emptyDC();
+  const [expandedClimbs, setExpandedClimbs] = useState({});
+  const toggleExpanded = (idx) => setExpandedClimbs(p => ({ ...p, [idx]: !p[idx] }));
+  const [deletedClimb, setDeletedClimb] = useState(null);
+  const [undoTimeout, setUndoTimeout] = useState(null);
 
   const updateDC = (f, v) => {
     setClimbData(prev => {
-      const current = prev[selectedDate] || { baselineInstrument: settings.instrument, baselineL: "", baselineR: "", baselineGripL: "", baselineGripR: "", climbs: [] };
+      const current = prev[selectedDate] || emptyDC();
       return { ...prev, [selectedDate]: { ...current, [f]: v } };
     });
   };
@@ -1738,15 +1742,40 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
         if (type === "boulder" && c.gradeBoulder) return c.gradeBoulder;
       }
     }
-    return type === "sport" ? "" : "";
+    return "";
   };
-  const quickAddSport = () => { const grade = lastGradeFor("sport"); setClimbData(prev => { const current = prev[selectedDate] || { baselineInstrument: settings.instrument, baselineL: "", baselineR: "", baselineGripL: "", baselineGripR: "", climbs: [] }; const nc = [...current.climbs, { ...emptyClimb(), instrument: current.baselineInstrument || settings.instrument, type: "Sport Climbing — Rope", gradeSport: grade, styles: [], sent: false, attempts: "1" }]; setExpanded(nc.length - 1); return { ...prev, [selectedDate]: { ...current, climbs: nc } }; }); };
-  const quickAddBoulder = () => { const grade = lastGradeFor("boulder"); setClimbData(prev => { const current = prev[selectedDate] || { baselineInstrument: settings.instrument, baselineL: "", baselineR: "", baselineGripL: "", baselineGripR: "", climbs: [] }; const nc = [...current.climbs, { ...emptyClimb(), instrument: current.baselineInstrument || settings.instrument, type: "Bouldering — Power", gradeBoulder: grade, styles: [], sent: false, attempts: "1" }]; setExpanded(nc.length - 1); return { ...prev, [selectedDate]: { ...current, climbs: nc } }; }); };
+
   const updateClimb = (i, f, v) => { setClimbData(prev => { const current = prev[selectedDate]; if (!current) return prev; const nc = [...current.climbs]; nc[i] = { ...nc[i], [f]: v }; return { ...prev, [selectedDate]: { ...current, climbs: nc } }; }); };
-  const removeClimb = (i) => { setClimbData(prev => { const current = prev[selectedDate]; if (!current) return prev; return { ...prev, [selectedDate]: { ...current, climbs: current.climbs.filter((_, j) => j !== i) } }; }); setExpanded(null); };
+
+  const deleteClimbWithUndo = (idx) => {
+    const climb = dc.climbs[idx];
+    const updatedClimbs = dc.climbs.filter((_, i) => i !== idx);
+    updateDC('climbs', updatedClimbs);
+    if (undoTimeout) clearTimeout(undoTimeout);
+    setDeletedClimb({ climb, idx });
+    const t = setTimeout(() => setDeletedClimb(null), 5000);
+    setUndoTimeout(t);
+  };
+
+  const undoDelete = () => {
+    if (!deletedClimb) return;
+    const updatedClimbs = [...dc.climbs];
+    updatedClimbs.splice(deletedClimb.idx, 0, deletedClimb.climb);
+    updateDC('climbs', updatedClimbs);
+    setDeletedClimb(null);
+    clearTimeout(undoTimeout);
+  };
+
+  const duplicateClimb = (idx) => {
+    const source = dc.climbs[idx];
+    const newClimb = { ...emptyClimb(), type: source.type, gradeSport: source.gradeSport, gradeBoulder: source.gradeBoulder, outdoor: source.outdoor };
+    const updatedClimbs = [...dc.climbs];
+    updatedClimbs.splice(idx + 1, 0, newClimb);
+    updateDC('climbs', updatedClimbs);
+  };
 
   const climbForceAvg = (climb) => {
-    if (climb.instrument === "Dynamometer") return avg(climb.postGripL, climb.postGripR);
+    if ((climb.instrument || settings.instrument) === "Dynamometer") return avg(climb.postGripL, climb.postGripR);
     const gf = gripFields("post", climb.tindeqGripType, climb.tindeqIntensity);
     const l = Number(climb[gf.L]) || Number(climb.postPeakL) || 0;
     const r = Number(climb[gf.R]) || Number(climb.postPeakR) || 0;
@@ -1760,6 +1789,41 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
   const hasMarker = !!(dayData[dayGf.L] || dayData[dayGf.R] || dayData.gripL || dayData.gripR);
   const baselineEmpty = !(dc.baselineL || dc.baselineR || dc.baselineGripL || dc.baselineGripR);
 
+  const defaultClimbType = useMemo(() => {
+    const sessions = dayData?.sessions || [];
+    const bouldering = sessions.filter(s => s.sessionType?.includes('Bouldering')).length;
+    const sport = sessions.filter(s => s.sessionType?.includes('Sport')).length;
+    if (bouldering > sport) return 'Bouldering';
+    if (sport > bouldering) return 'Sport';
+    const discipline = Array.isArray(profile?.discipline) ? profile.discipline : [];
+    if (discipline.includes('Bouldering') && !discipline.includes('Sport')) return 'Bouldering';
+    if (discipline.includes('Sport') && !discipline.includes('Bouldering')) return 'Sport';
+    return 'Bouldering';
+  }, [dayData, profile]);
+
+  const defaultOutdoor = useMemo(() => {
+    const sessions = dayData?.sessions || [];
+    const outdoorCount = sessions.filter(s => s.outdoor).length;
+    return sessions.length > 0 && outdoorCount > sessions.length / 2;
+  }, [dayData]);
+
+  const addClimb = (type) => {
+    const isBoulder = type === 'Bouldering';
+    const grade = lastGradeFor(isBoulder ? 'boulder' : 'sport');
+    setClimbData(prev => {
+      const current = prev[selectedDate] || emptyDC();
+      const nc = [...current.climbs, {
+        ...emptyClimb(),
+        instrument: current.baselineInstrument || settings.instrument,
+        type: isBoulder ? 'Bouldering — Power' : 'Sport Climbing — Rope',
+        [isBoulder ? 'gradeBoulder' : 'gradeSport']: grade,
+        outdoor: defaultOutdoor,
+        sent: false, attempts: "1",
+      }];
+      return { ...prev, [selectedDate]: { ...current, climbs: nc } };
+    });
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -1767,6 +1831,7 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
         <div className="text-center"><div className="text-lg font-bold">{isToday ? "Today" : fmtDate(selectedDate)}</div><div className="text-xs text-slate-500">Climb Log</div></div>
         <button onClick={() => shiftDate(1)} className="p-2 rounded-lg hover:bg-slate-800"><ChevronRight size={20} className="text-slate-400" /></button>
       </div>
+
       <Card>
         <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">Post-Warmup Baseline</div>
         {hasMarker && baselineEmpty && <button onClick={() => {
@@ -1786,68 +1851,132 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
       </Card>
 
       {dc.climbs.map((climb, idx) => {
-        const p = forcePct(climb); const cost = p !== null ? 100 - p : null; const isExp = expanded === idx;
+        const isBoulder = climb.type ? climb.type.includes('Bouldering') : defaultClimbType === 'Bouldering';
+        const climbInstrument = climb.instrument || settings.instrument;
+        const p = forcePct(climb); const cost = p !== null ? 100 - p : null;
         return (
           <Card key={idx}>
-            <button onClick={() => setExpanded(isExp ? null : idx)} className="w-full flex items-center justify-between">
+            <div className="flex items-center justify-between mb-3">
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold ${climb.sent ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-slate-700/50 text-slate-400"}`}>
+                {idx + 1}{climb.sent && <Check size={10} className="ml-0.5" />}
+              </div>
               <div className="flex items-center gap-3">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold ${climb.sent ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-slate-700/50 text-slate-400"}`}>{idx + 1}</div>
-                <div className="text-left">
-                  <div className="text-sm font-semibold flex items-center gap-1.5">{climb.route || "Unnamed"}{climb.sent && <Check size={12} className="text-emerald-400" />}</div>
-                  <div className="flex gap-1.5 mt-0.5 flex-wrap">
-                    {climb.gradeSport && <Badge color="blue">{climb.gradeSport}</Badge>}
-                    {climb.gradeBoulder && <Badge color="blue">{climb.gradeBoulder}</Badge>}
-                    {climb.attempts && <Badge>{climb.attempts} att</Badge>}
-                    {climb.moves && <Badge>{climb.moves} moves</Badge>}
-                    {p !== null && <Badge color={p >= 90 ? "green" : p >= 80 ? "yellow" : "red"}>{p}%</Badge>}
-                    {climb.styles?.length > 0 && <Badge color="gray">{climb.styles.length > 2 ? `${climb.styles.slice(0, 2).join(", ")}+${climb.styles.length - 2}` : climb.styles.join(", ")}</Badge>}
-                  </div>
-                </div>
+                {(climb.gradeSport || climb.gradeBoulder) && <span className="text-xs font-mono font-bold text-sky-400">{climb.gradeBoulder || climb.gradeSport}</span>}
+                {p !== null && <Badge color={p >= 90 ? "green" : p >= 80 ? "yellow" : "red"}>{p}%</Badge>}
+                <button onClick={() => duplicateClimb(idx)} className="text-[10px] text-slate-500 hover:text-sky-400 transition-all">Duplicate</button>
+                <button onClick={() => deleteClimbWithUndo(idx)} className="text-red-400/50 hover:text-red-400 transition-all"><Trash2 size={13} /></button>
               </div>
-              {isExp ? <ChevronUp size={18} className="text-slate-500" /> : <ChevronDown size={18} className="text-slate-500" />}
+            </div>
+
+            {/* Type toggle */}
+            <div className="flex gap-1 mb-2">
+              {['Bouldering', 'Sport'].map(t => (
+                <button key={t} onClick={() => updateClimb(idx, 'type', t === 'Bouldering' ? 'Bouldering — Power' : 'Sport Climbing — Rope')}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${isBoulder === (t === 'Bouldering') ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30' : 'bg-slate-800 text-slate-500 hover:text-slate-300'}`}>
+                  {t}
+                </button>
+              ))}
+            </div>
+
+            {/* Outdoor/Indoor toggle */}
+            <div className="flex gap-1 mb-3">
+              {['Outdoor', 'Indoor'].map(o => {
+                const isOutdoor = climb.outdoor !== undefined ? climb.outdoor : defaultOutdoor;
+                return (
+                  <button key={o} onClick={() => updateClimb(idx, 'outdoor', o === 'Outdoor')}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${isOutdoor === (o === 'Outdoor') ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-500 hover:text-slate-300'}`}>
+                    {o}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Grade */}
+            <div className="mb-3">
+              {isBoulder
+                ? <Select label="Grade" value={climb.gradeBoulder} onChange={v => updateClimb(idx, 'gradeBoulder', v)} options={BOULDER_GRADES} />
+                : <Select label="Grade" value={climb.gradeSport} onChange={v => updateClimb(idx, 'gradeSport', v)} options={SPORT_GRADES} />}
+            </div>
+
+            {/* Attempts + RPE + Sent */}
+            <div className="grid grid-cols-3 gap-2 mb-1">
+              <Input label="Attempts" value={climb.attempts} onChange={v => updateClimb(idx, 'attempts', v)} type="number" min="1" />
+              <Input label="RPE (1-10)" value={climb.rpe} onChange={v => updateClimb(idx, 'rpe', v)} type="number" min="1" max="10" />
+              <SentToggle sent={climb.sent} onChange={v => updateClimb(idx, 'sent', v)} />
+            </div>
+
+            {/* Expand/collapse */}
+            <button onClick={() => toggleExpanded(idx)}
+              className="w-full mt-2 py-1 text-[10px] text-slate-600 hover:text-slate-400 transition-all flex items-center justify-center gap-1">
+              {expandedClimbs[idx] ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+              {expandedClimbs[idx] ? 'Less' : 'More details'}
             </button>
-            {isExp && <div className="mt-4 pt-4 border-t border-slate-700/30 space-y-3">
-              <div className="grid grid-cols-2 gap-3"><Input label="Route / Problem" value={climb.route} onChange={v => updateClimb(idx, "route", v)} /><Select label="Type" value={climb.type} onChange={v => updateClimb(idx, "type", v)} options={CLIMB_TYPES} /></div>
-              <div className="grid grid-cols-2 gap-3"><Select label="Grade (Sport)" value={climb.gradeSport} onChange={v => updateClimb(idx, "gradeSport", v)} options={SPORT_GRADES} /><Select label="Grade (Boulder)" value={climb.gradeBoulder} onChange={v => updateClimb(idx, "gradeBoulder", v)} options={BOULDER_GRADES} /></div>
-              <StylePicker selected={climb.styles || []} onChange={v => updateClimb(idx, "styles", v)} />
-              <div className="grid grid-cols-2 gap-3"><Select label="Send Type" value={climb.sendType} onChange={v => updateClimb(idx, "sendType", v)} options={SEND_TYPES} /><Select label="Wall Angle" value={climb.wallAngle} onChange={v => updateClimb(idx, "wallAngle", v)} options={WALL_ANGLES} /></div>
-              <div className="grid grid-cols-4 gap-3">
-                <Input label="RPE (1-10)" value={climb.rpe} onChange={v => updateClimb(idx, "rpe", v)} type="number" min="1" max="10" />
-                <Input label="# Attempts" value={climb.attempts} onChange={v => updateClimb(idx, "attempts", v)} type="number" min="1" />
-                <Input label="# Moves" value={climb.moves} onChange={v => updateClimb(idx, "moves", v)} type="number" min="1" />
-                <SentToggle sent={climb.sent} onChange={v => updateClimb(idx, "sent", v)} />
+
+            {/* More details */}
+            {expandedClimbs[idx] && <div className="mt-3 pt-3 border-t border-slate-700/30 space-y-3">
+              <Input label="Route / Problem" value={climb.route} onChange={v => updateClimb(idx, 'route', v)} />
+              <div className="grid grid-cols-2 gap-3">
+                <Select label="Send Type" value={climb.sendType} onChange={v => updateClimb(idx, 'sendType', v)} options={SEND_TYPES} />
+                <Select label="Wall Angle" value={climb.wallAngle} onChange={v => updateClimb(idx, 'wallAngle', v)} options={WALL_ANGLES} />
               </div>
+              <StylePicker selected={climb.styles || []} onChange={v => updateClimb(idx, 'styles', v)} />
+              <Input label="# Moves" value={climb.moves} onChange={v => updateClimb(idx, 'moves', v)} type="number" min="1" />
+              <Input label="Notes" value={climb.notes} onChange={v => updateClimb(idx, 'notes', v)} placeholder="Beta, conditions..." />
               <div className="bg-slate-900/40 rounded-lg p-3 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="text-[10px] text-slate-500 uppercase tracking-wider">Post-Climb Force (L/R)</div>
                   {baselineEmpty && <span className="text-[10px] text-amber-500/80">Log a baseline above to see % cost</span>}
                 </div>
-                <InstrumentToggle value={climb.instrument || settings.instrument} onChange={v => updateClimb(idx, "instrument", v)} />
-                {climb.instrument === "Tindeq" && <>
+                <InstrumentToggle value={climbInstrument} onChange={v => updateClimb(idx, "instrument", v)} />
+                {climbInstrument === "Tindeq" && <>
                   <div className="mb-1"><label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5 block">Grip Position</label><GripPositionToggle gripType={climb.tindeqGripType || "Half Crimp"} intensity={climb.tindeqIntensity || "Try Hard"} onChangeType={v => updateClimb(idx, "tindeqGripType", v)} onChangeIntensity={v => updateClimb(idx, "tindeqIntensity", v)} /></div>
                   <ForcePair labelL={`Peak L — ${gripAbbr(climb.tindeqGripType || "Half Crimp", climb.tindeqIntensity || "Try Hard")} (${unit})`} labelR={`Peak R — ${gripAbbr(climb.tindeqGripType || "Half Crimp", climb.tindeqIntensity || "Try Hard")} (${unit})`} valueL={climb[gripFields("post", climb.tindeqGripType, climb.tindeqIntensity).L] || ""} valueR={climb[gripFields("post", climb.tindeqGripType, climb.tindeqIntensity).R] || ""} onChangeL={v => updateClimb(idx, gripFields("post", climb.tindeqGripType, climb.tindeqIntensity).L, v)} onChangeR={v => updateClimb(idx, gripFields("post", climb.tindeqGripType, climb.tindeqIntensity).R, v)} />
                   <ForcePair labelL="RFD L (N/s)" labelR="RFD R (N/s)" valueL={climb.postRFDL} valueR={climb.postRFDR} onChangeL={v => updateClimb(idx, "postRFDL", v)} onChangeR={v => updateClimb(idx, "postRFDR", v)} step="1" />
                 </>}
-                {climb.instrument === "Dynamometer" && <ForcePair labelL={`Grip L (${unit})`} labelR={`Grip R (${unit})`} valueL={climb.postGripL} valueR={climb.postGripR} onChangeL={v => updateClimb(idx, "postGripL", v)} onChangeR={v => updateClimb(idx, "postGripR", v)} />}
+                {climbInstrument === "Dynamometer" && <ForcePair labelL={`Grip L (${unit})`} labelR={`Grip R (${unit})`} valueL={climb.postGripL} valueR={climb.postGripR} onChangeL={v => updateClimb(idx, "postGripL", v)} onChangeR={v => updateClimb(idx, "postGripR", v)} />}
                 {p !== null && <div className="flex gap-4 text-sm">
-                  <div><span className="text-slate-500 text-xs">% baseline (avg): </span><span className={`font-mono font-bold ${p >= 90 ? "text-emerald-400" : p >= 80 ? "text-sky-400" : p >= 70 ? "text-amber-400" : "text-red-400"}`}>{p}%</span></div>
+                  <div><span className="text-slate-500 text-xs">% baseline: </span><span className={`font-mono font-bold ${p >= 90 ? "text-emerald-400" : p >= 80 ? "text-sky-400" : p >= 70 ? "text-amber-400" : "text-red-400"}`}>{p}%</span></div>
                   <div><span className="text-slate-500 text-xs">Cost: </span><span className={`font-mono font-bold ${cost > 15 ? "text-red-400" : cost > 8 ? "text-amber-400" : "text-emerald-400"}`}>{cost}%</span></div>
                 </div>}
               </div>
-              <Input label="Notes" value={climb.notes} onChange={v => updateClimb(idx, "notes", v)} placeholder="Beta, conditions..." />
-              <button onClick={() => removeClimb(idx)} className="flex items-center gap-1.5 text-xs text-red-400/60 hover:text-red-400"><Trash2 size={13} /> Remove</button>
             </div>}
           </Card>
         );
       })}
+
       <div className="space-y-2">
         <div className="flex gap-2">
-          <button onClick={quickAddSport} className="flex-1 py-2.5 bg-sky-500/10 border border-sky-500/20 rounded-xl text-sky-400 hover:bg-sky-500/20 transition-all flex items-center justify-center gap-1.5 text-xs font-semibold"><Plus size={14} /> Sport{lastGradeFor("sport") ? ` ${lastGradeFor("sport")}` : ""}</button>
-          <button onClick={quickAddBoulder} className="flex-1 py-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 hover:bg-emerald-500/20 transition-all flex items-center justify-center gap-1.5 text-xs font-semibold"><Plus size={14} /> Boulder{lastGradeFor("boulder") ? ` ${lastGradeFor("boulder")}` : ""}</button>
+          <button onClick={() => addClimb('Bouldering')} className="flex-1 py-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 hover:bg-emerald-500/20 transition-all flex items-center justify-center gap-1.5 text-xs font-semibold"><Plus size={14} /> Boulder{lastGradeFor("boulder") ? ` ${lastGradeFor("boulder")}` : ""}</button>
+          <button onClick={() => addClimb('Sport')} className="flex-1 py-2.5 bg-sky-500/10 border border-sky-500/20 rounded-xl text-sky-400 hover:bg-sky-500/20 transition-all flex items-center justify-center gap-1.5 text-xs font-semibold"><Plus size={14} /> Sport{lastGradeFor("sport") ? ` ${lastGradeFor("sport")}` : ""}</button>
         </div>
-        <button onClick={() => { setClimbData(prev => { const current = prev[selectedDate] || { baselineInstrument: settings.instrument, baselineL: "", baselineR: "", baselineGripL: "", baselineGripR: "", climbs: [] }; const nc = [...current.climbs, { ...emptyClimb(), instrument: current.baselineInstrument || settings.instrument }]; setExpanded(nc.length - 1); return { ...prev, [selectedDate]: { ...current, climbs: nc } }; }); }}
-          className="w-full py-2.5 border-2 border-dashed border-slate-700/50 rounded-xl text-slate-500 hover:text-sky-400 hover:border-sky-500/30 transition-all flex items-center justify-center gap-2 text-xs font-medium"><Plus size={14} /> Custom {dc.climbs.length > 0 && `(${dc.climbs.length} logged)`}</button>
       </div>
+
+      <Card>
+        <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">Post-Session Force Marker</div>
+        <p className="text-[10px] text-slate-600 mb-3">Optional — one reading after your session to track cumulative fatigue</p>
+        <InstrumentToggle value={dc.postSessionInstrument || settings.instrument} onChange={v => updateDC('postSessionInstrument', v)} />
+        {(dc.postSessionInstrument || settings.instrument) === 'Tindeq' && <>
+          <div className="mt-3">
+            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5 block">Grip Position</label>
+            <GripPositionToggle gripType={dc.postSessionGripType || 'Half Crimp'} intensity={dc.postSessionIntensity || 'Try Hard'} onChangeType={v => updateDC('postSessionGripType', v)} onChangeIntensity={v => updateDC('postSessionIntensity', v)} />
+          </div>
+          <div className="mt-3">
+            <ForcePair labelL={`Peak L — ${gripAbbr(dc.postSessionGripType || 'Half Crimp', dc.postSessionIntensity || 'Try Hard')} (${unit})`} labelR={`Peak R — ${gripAbbr(dc.postSessionGripType || 'Half Crimp', dc.postSessionIntensity || 'Try Hard')} (${unit})`} valueL={dc.postSessionPeakL || ''} valueR={dc.postSessionPeakR || ''} onChangeL={v => updateDC('postSessionPeakL', v)} onChangeR={v => updateDC('postSessionPeakR', v)} />
+          </div>
+        </>}
+        {(dc.postSessionInstrument || settings.instrument) === 'Dynamometer' && (
+          <div className="mt-3">
+            <ForcePair labelL={`Grip L (${unit})`} labelR={`Grip R (${unit})`} valueL={dc.postSessionGripL || ''} valueR={dc.postSessionGripR || ''} onChangeL={v => updateDC('postSessionGripL', v)} onChangeR={v => updateDC('postSessionGripR', v)} />
+          </div>
+        )}
+      </Card>
+
+      {deletedClimb && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 flex items-center gap-3 shadow-xl z-50 text-xs">
+          <span className="text-slate-300">Climb removed</span>
+          <button onClick={undoDelete} className="text-sky-400 font-semibold hover:text-sky-300">Undo</button>
+        </div>
+      )}
     </div>
   );
 }
