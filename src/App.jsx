@@ -124,7 +124,7 @@ const WELLNESS_ITEMS = [
 // ─── Defaults ───
 const emptyDay = () => ({ sleepQuality: "", sleepDuration: "", soreness: "", fingerSoreness: "", stress: "", motivation: "", conditions: "", hrv: "", markerType: "Tindeq", tindeqGripType: "Half Crimp", tindeqIntensity: "Try Hard", gripL: "", gripR: "", tindeqHC50L: "", tindeqHC50R: "", tindeqHCTHL: "", tindeqHCTHR: "", tindeqOH50L: "", tindeqOH50R: "", tindeqOHTHL: "", tindeqOHTHR: "", sessions: [], notes: "" });
 const emptySession = () => ({ sessionType: "", sessionDuration: "", sessionRPE: "", notes: "", outdoor: false });
-const emptyClimb = () => ({ route: "", type: "", gradeSport: "", gradeBoulder: "", styles: [], sendType: "", wallAngle: "", rpe: "", attempts: "", moves: "", sent: false, instrument: "Tindeq", tindeqGripType: "Half Crimp", tindeqIntensity: "Try Hard", postHC50L: "", postHC50R: "", postHCTHL: "", postHCTHR: "", postOH50L: "", postOH50R: "", postOHTHL: "", postOHTHR: "", postRFDL: "", postRFDR: "", postGripL: "", postGripR: "", notes: "" });
+const emptyClimb = () => ({ route: "", type: "", gradeSport: "", gradeBoulder: "", styles: [], sendType: "", wallAngle: "", rpe: "", attempts: "", moves: "", sent: false, isProject: false, instrument: "Tindeq", tindeqGripType: "Half Crimp", tindeqIntensity: "Try Hard", postHC50L: "", postHC50R: "", postHCTHL: "", postHCTHR: "", postOH50L: "", postOH50R: "", postOHTHL: "", postOHTHR: "", postRFDL: "", postRFDR: "", postGripL: "", postGripR: "", notes: "" });
 const emptyAssess = () => ({ date: "", bodyweight: "", maxHang: "", weightedPullup: "", tindeqGripType: "Half Crimp", tindeqIntensity: "Try Hard", tindeqHC50L: "", tindeqHC50R: "", tindeqHCTHL: "", tindeqHCTHR: "", tindeqOH50L: "", tindeqOH50R: "", tindeqOHTHL: "", tindeqOHTHR: "", tindeqRFDL: "", tindeqRFDR: "", criticalForce: "", gripL: "", gripR: "", shoulderRatio: "", notes: "" });
 const emptyInjury = () => ({ date: "", condition: "", lThumb: 0, lIndex: 0, lMiddle: 0, lRing: 0, lPinky: 0, rThumb: 0, rIndex: 0, rMiddle: 0, rRing: 0, rPinky: 0, elbowL: 0, elbowR: 0, shoulderL: 0, shoulderR: 0, details: "", notes: "" });
 
@@ -1711,6 +1711,8 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
   const toggleExpanded = (idx) => setExpandedClimbs(p => ({ ...p, [idx]: !p[idx] }));
   const [deletedClimb, setDeletedClimb] = useState(null);
   const [undoTimeout, setUndoTimeout] = useState(null);
+  const [nameFocused, setNameFocused] = useState({});
+  const [showProjects, setShowProjects] = useState(false);
 
   const updateDC = (f, v) => {
     setClimbData(prev => {
@@ -1824,6 +1826,37 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
     });
   };
 
+  const projectSuggestions = useMemo(() => {
+    const seen = new Set();
+    const projects = [];
+    Object.values(climbData).forEach(ddc => {
+      (ddc.climbs || []).forEach(c => {
+        if (c.isProject && !c.sent && c.route && !seen.has(c.route)) {
+          seen.add(c.route);
+          projects.push({ name: c.route, grade: c.gradeBoulder || c.gradeSport || '', type: c.type || '' });
+        }
+      });
+    });
+    return projects;
+  }, [climbData]);
+
+  const allProjects = useMemo(() => {
+    const projectMap = {};
+    Object.entries(climbData).forEach(([date, ddc]) => {
+      (ddc.climbs || []).forEach(c => {
+        if (!c.isProject || !c.route) return;
+        const key = c.route;
+        if (!projectMap[key]) {
+          projectMap[key] = { name: c.route, grade: c.gradeBoulder || c.gradeSport || '', type: c.type || '', firstDate: date, lastDate: date, attempts: 0, sent: false };
+        }
+        projectMap[key].attempts++;
+        if (date > projectMap[key].lastDate) projectMap[key].lastDate = date;
+        if (c.sent) projectMap[key].sent = true;
+      });
+    });
+    return Object.values(projectMap).filter(p => !p.sent).sort((a, b) => b.lastDate.localeCompare(a.lastDate));
+  }, [climbData]);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -1857,15 +1890,47 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
         return (
           <Card key={idx}>
             <div className="flex items-center justify-between mb-3">
-              <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold ${climb.sent ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-slate-700/50 text-slate-400"}`}>
-                {idx + 1}{climb.sent && <Check size={10} className="ml-0.5" />}
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold ${climb.sent ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : climb.isProject ? "bg-violet-500/20 text-violet-400 border border-violet-500/30" : "bg-slate-700/50 text-slate-400"}`}>
+                {idx + 1}
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 {(climb.gradeSport || climb.gradeBoulder) && <span className="text-xs font-mono font-bold text-sky-400">{climb.gradeBoulder || climb.gradeSport}</span>}
                 {p !== null && <Badge color={p >= 90 ? "green" : p >= 80 ? "yellow" : "red"}>{p}%</Badge>}
-                <button onClick={() => duplicateClimb(idx)} className="text-[10px] text-slate-500 hover:text-sky-400 transition-all">Duplicate</button>
+                <button onClick={() => duplicateClimb(idx)}
+                  className="px-3 py-1.5 bg-slate-900/60 border border-slate-700/40 rounded-lg text-[10px] text-slate-400 hover:text-sky-400 hover:border-sky-500/30 transition-all font-semibold">
+                  Duplicate
+                </button>
                 <button onClick={() => deleteClimbWithUndo(idx)} className="text-red-400/50 hover:text-red-400 transition-all"><Trash2 size={13} /></button>
               </div>
+            </div>
+
+            {/* Route name with project autocomplete */}
+            <div className="relative mb-3">
+              <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1 block">Name (optional)</label>
+              <input
+                value={climb.route || ''}
+                onChange={e => updateClimb(idx, 'route', e.target.value)}
+                onFocus={() => setNameFocused(p => ({ ...p, [idx]: true }))}
+                onBlur={() => setTimeout(() => setNameFocused(p => ({ ...p, [idx]: false })), 150)}
+                placeholder="e.g. Red route, The Crimp Problem"
+                className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 placeholder-slate-600"
+              />
+              {nameFocused[idx] && climb.route && projectSuggestions.filter(ps =>
+                ps.name.toLowerCase().includes((climb.route || '').toLowerCase())
+              ).length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-lg overflow-hidden z-10 shadow-xl">
+                  {projectSuggestions
+                    .filter(ps => ps.name.toLowerCase().includes((climb.route || '').toLowerCase()))
+                    .slice(0, 5)
+                    .map((ps, i) => (
+                      <button key={i} onMouseDown={() => { updateClimb(idx, 'route', ps.name); updateClimb(idx, 'isProject', true); }}
+                        className="w-full px-3 py-2 text-left text-xs text-slate-300 hover:bg-slate-800 flex items-center justify-between">
+                        <span>{ps.name}</span>
+                        <span className="text-slate-500">{ps.grade}</span>
+                      </button>
+                    ))}
+                </div>
+              )}
             </div>
 
             {/* Type toggle */}
@@ -1898,11 +1963,43 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
                 : <Select label="Grade" value={climb.gradeSport} onChange={v => updateClimb(idx, 'gradeSport', v)} options={SPORT_GRADES} />}
             </div>
 
-            {/* Attempts + RPE + Sent */}
-            <div className="grid grid-cols-3 gap-2 mb-1">
+            {/* Attempts + RPE */}
+            <div className="grid grid-cols-2 gap-2 mb-3">
               <Input label="Attempts" value={climb.attempts} onChange={v => updateClimb(idx, 'attempts', v)} type="number" min="1" />
               <Input label="RPE (1-10)" value={climb.rpe} onChange={v => updateClimb(idx, 'rpe', v)} type="number" min="1" max="10" />
-              <SentToggle sent={climb.sent} onChange={v => updateClimb(idx, 'sent', v)} />
+            </div>
+
+            {/* Sent + Project toggles */}
+            <div className="grid grid-cols-2 gap-2 mb-1">
+              <div>
+                <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Sent</div>
+                <div className="flex gap-1 bg-slate-900/60 rounded-lg p-0.5 border border-slate-700/40">
+                  {[{v: false, l: 'Not yet'}, {v: true, l: 'Yes'}].map(opt => (
+                    <button key={String(opt.v)} onClick={() => {
+                      updateClimb(idx, 'sent', opt.v);
+                      if (opt.v === true) updateClimb(idx, 'isProject', false);
+                    }}
+                      className={`flex-1 py-1.5 rounded-md text-[10px] font-semibold transition-all ${
+                        !!climb.sent === opt.v
+                          ? opt.v ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30' : 'bg-slate-700/60 text-slate-300'
+                          : 'text-slate-500 hover:text-slate-300'
+                      }`}>{opt.l}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Project</div>
+                <div className="flex gap-1 bg-slate-900/60 rounded-lg p-0.5 border border-slate-700/40">
+                  {[{v: false, l: 'No'}, {v: true, l: 'Yes'}].map(opt => (
+                    <button key={String(opt.v)} onClick={() => updateClimb(idx, 'isProject', opt.v)}
+                      className={`flex-1 py-1.5 rounded-md text-[10px] font-semibold transition-all ${
+                        !!climb.isProject === opt.v
+                          ? opt.v ? 'bg-violet-500/20 text-violet-300 border border-violet-500/30' : 'bg-slate-700/60 text-slate-300'
+                          : 'text-slate-500 hover:text-slate-300'
+                      }`}>{opt.l}</button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             {/* Expand/collapse */}
@@ -1914,7 +2011,6 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
 
             {/* More details */}
             {expandedClimbs[idx] && <div className="mt-3 pt-3 border-t border-slate-700/30 space-y-3">
-              <Input label="Route / Problem" value={climb.route} onChange={v => updateClimb(idx, 'route', v)} />
               <div className="grid grid-cols-2 gap-3">
                 <Select label="Send Type" value={climb.sendType} onChange={v => updateClimb(idx, 'sendType', v)} options={SEND_TYPES} />
                 <Select label="Wall Angle" value={climb.wallAngle} onChange={v => updateClimb(idx, 'wallAngle', v)} options={WALL_ANGLES} />
@@ -1970,6 +2066,36 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
           </div>
         )}
       </Card>
+
+      <div className="mt-2">
+        <button onClick={() => setShowProjects(p => !p)}
+          className="w-full py-2 flex items-center justify-between text-xs text-slate-500 hover:text-slate-300 transition-all">
+          <span className="font-semibold">Active Projects ({allProjects.length})</span>
+          {showProjects ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </button>
+        {showProjects && (
+          <div className="space-y-2 mt-2">
+            {allProjects.length === 0 && (
+              <div className="text-center text-slate-600 text-xs py-4">No active projects — mark a climb as Project: Yes to track it here</div>
+            )}
+            {allProjects.map(proj => (
+              <Card key={proj.name}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-200">{proj.name}</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">
+                      {proj.grade}{proj.grade ? ' · ' : ''}{proj.attempts} attempt{proj.attempts !== 1 ? 's' : ''} · Last: {fmtShort(proj.lastDate)}
+                    </div>
+                  </div>
+                  <div className="text-[10px] text-slate-600">
+                    {Math.round((new Date(selectedDate) - new Date(proj.firstDate)) / 86400000)}d
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
 
       {deletedClimb && (
         <div className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 flex items-center gap-3 shadow-xl z-50 text-xs">
