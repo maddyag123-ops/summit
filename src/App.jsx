@@ -1189,7 +1189,7 @@ export default function ClimbingTracker() {
       </div>}
       <main className="max-w-2xl mx-auto px-4 py-4 pb-24">
         {tab === "today" && <TodayView {...{ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, restPattern, loadTrajectory, deloadStatus, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }} />}
-        {tab === "climbs" && <ClimbView {...{ selectedDate, shiftDate, climbData, setClimbData, settings, dailyData, setDailyData, profile }} />}
+        {tab === "climbs" && <ClimbView {...{ selectedDate, shiftDate, climbData, setClimbData, settings, dailyData, setDailyData, profile, datesSorted }} />}
         {tab === "assess" && <AssessView {...{ assessData, setAssessData, settings }} />}
         {tab === "injury" && <InjuryView {...{ injuryData, setInjuryData, dailyData, ewmaData, datesSorted }} />}
         {tab === "dashboard" && <DashboardView {...{ dailyData, ewmaData, fingerEWMAData, weekOnOffSplit, datesSorted, assessData, climbData }} />}
@@ -1702,7 +1702,7 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
 }
 
 // ─── CLIMB VIEW ───
-function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings, dailyData, setDailyData, profile }) {
+function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings, dailyData, setDailyData, profile, datesSorted }) {
   const isToday = selectedDate === todayStr();
   const unit = settings.unit || "lbs";
   const emptyDC = () => ({ baselineInstrument: settings.instrument, baselineL: "", baselineR: "", baselineGripL: "", baselineGripR: "", climbs: [] });
@@ -1770,7 +1770,16 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
 
   const duplicateClimb = (idx) => {
     const source = dc.climbs[idx];
-    const newClimb = { ...emptyClimb(), type: source.type, gradeSport: source.gradeSport, gradeBoulder: source.gradeBoulder, outdoor: source.outdoor };
+    const newClimb = {
+      ...emptyClimb(),
+      type: source.type,
+      gradeSport: source.gradeSport,
+      gradeBoulder: source.gradeBoulder,
+      outdoor: source.outdoor,
+      route: source.route || '',
+      isProject: source.isProject || false,
+      attempts: source.attempts ? String(Number(source.attempts) + 1) : '2',
+    };
     const updatedClimbs = [...dc.climbs];
     updatedClimbs.splice(idx + 1, 0, newClimb);
     updateDC('climbs', updatedClimbs);
@@ -1825,6 +1834,65 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
       return { ...prev, [selectedDate]: { ...current, climbs: nc } };
     });
   };
+
+  const getFatigueColor = (pct) => {
+    if (pct >= 0) return 'text-emerald-400';
+    if (pct >= -10) return 'text-slate-300';
+    if (pct >= -15) return 'text-amber-400';
+    if (pct >= -30) return 'text-red-400';
+    return 'text-red-600';
+  };
+
+  const morningMarker = (() => {
+    const dd = dailyData[selectedDate];
+    if (!dd) return null;
+    const gt = dc.postSessionGripType || 'Half Crimp';
+    const gi = dc.postSessionIntensity || 'Try Hard';
+    const gf = gripFields('tindeq', gt, gi);
+    const l = Number(dd[gf.L]); const r = Number(dd[gf.R]);
+    if (!l && !r) return null;
+    return avg(l, r);
+  })();
+
+  const postSession30DayMean = (() => {
+    const gt = dc.postSessionGripType || 'Half Crimp';
+    const gi = dc.postSessionIntensity || 'Try Hard';
+    const cutoff = new Date(selectedDate);
+    cutoff.setDate(cutoff.getDate() - 30);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    const vals = (datesSorted || [])
+      .filter(d => d >= cutoffStr && d < selectedDate)
+      .map(d => {
+        const pastDC = climbData[d];
+        if (!pastDC) return null;
+        if ((pastDC.postSessionGripType || 'Half Crimp') !== gt) return null;
+        if ((pastDC.postSessionIntensity || 'Try Hard') !== gi) return null;
+        const l = Number(pastDC.postSessionPeakL); const r = Number(pastDC.postSessionPeakR);
+        if (!l && !r) return null;
+        return avg(l, r);
+      })
+      .filter(v => v && v > 0);
+    if (vals.length < 3) return null;
+    return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10;
+  })();
+
+  const postSessionCurrent = (() => {
+    if ((dc.postSessionInstrument || settings.instrument) === 'Dynamometer') {
+      const l = Number(dc.postSessionGripL); const r = Number(dc.postSessionGripR);
+      if (!l && !r) return null;
+      return avg(l, r);
+    }
+    const l = Number(dc.postSessionPeakL); const r = Number(dc.postSessionPeakR);
+    if (!l && !r) return null;
+    return avg(l, r);
+  })();
+
+  const pctFromMorning = morningMarker && postSessionCurrent
+    ? Math.round(((postSessionCurrent - morningMarker) / morningMarker) * 100)
+    : null;
+  const pctFrom30Day = postSession30DayMean && postSessionCurrent
+    ? Math.round(((postSessionCurrent - postSession30DayMean) / postSession30DayMean) * 100)
+    : null;
 
   const projectSuggestions = useMemo(() => {
     const seen = new Set();
@@ -2065,6 +2133,32 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
             <ForcePair labelL={`Grip L (${unit})`} labelR={`Grip R (${unit})`} valueL={dc.postSessionGripL || ''} valueR={dc.postSessionGripR || ''} onChangeL={v => updateDC('postSessionGripL', v)} onChangeR={v => updateDC('postSessionGripR', v)} />
           </div>
         )}
+        {postSessionCurrent && (pctFromMorning !== null || pctFrom30Day !== null) && (
+          <div className="mt-3 bg-slate-900/40 rounded-lg p-3 space-y-1.5">
+            <div className="text-[10px] text-slate-500 uppercase tracking-wider">Session Fatigue</div>
+            {pctFromMorning !== null && (
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-400">vs this morning</span>
+                <span className={`font-mono font-bold ${getFatigueColor(pctFromMorning)}`}>
+                  {pctFromMorning > 0 ? '+' : ''}{pctFromMorning}%
+                </span>
+              </div>
+            )}
+            {pctFrom30Day !== null && (
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-400">vs 30-day avg</span>
+                <span className={`font-mono font-bold ${getFatigueColor(pctFrom30Day)}`}>
+                  {pctFrom30Day > 0 ? '+' : ''}{pctFrom30Day}%
+                </span>
+              </div>
+            )}
+            <div className="space-y-0.5 mt-1">
+              <div className="text-[10px] text-slate-600">Expected: −5% to −10% after a normal session</div>
+              <div className="text-[10px] text-amber-600">−15% or more: meaningful fatigue — monitor recovery</div>
+              <div className="text-[10px] text-red-500">−30% or more: significant fatigue — consider rest tomorrow</div>
+            </div>
+          </div>
+        )}
       </Card>
 
       <div className="mt-2">
@@ -2087,8 +2181,28 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
                       {proj.grade}{proj.grade ? ' · ' : ''}{proj.attempts} attempt{proj.attempts !== 1 ? 's' : ''} · Last: {fmtShort(proj.lastDate)}
                     </div>
                   </div>
-                  <div className="text-[10px] text-slate-600">
-                    {Math.round((new Date(selectedDate) - new Date(proj.firstDate)) / 86400000)}d
+                  <div className="flex items-center gap-3">
+                    <div className="text-[10px] text-slate-600">
+                      {Math.round((new Date(selectedDate) - new Date(proj.firstDate)) / 86400000)}d
+                    </div>
+                    <button
+                      onClick={() => {
+                        const isBoulder = proj.type?.includes('Bouldering') || defaultClimbType === 'Bouldering';
+                        const newClimb = {
+                          ...emptyClimb(),
+                          route: proj.name,
+                          type: proj.type || (isBoulder ? 'Bouldering — Power' : 'Sport Climbing — Rope'),
+                          gradeBoulder: isBoulder ? proj.grade : '',
+                          gradeSport: !isBoulder ? proj.grade : '',
+                          outdoor: defaultOutdoor,
+                          isProject: true,
+                        };
+                        updateDC('climbs', [newClimb, ...(dc.climbs || [])]);
+                        setShowProjects(false);
+                      }}
+                      className="px-2.5 py-1.5 bg-violet-500/20 text-violet-300 border border-violet-500/30 rounded-lg text-[10px] font-semibold hover:bg-violet-500/30 transition-all">
+                      + Log today
+                    </button>
                   </div>
                 </div>
               </Card>
