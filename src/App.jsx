@@ -2246,7 +2246,7 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
                 <div className="text-[10px] text-amber-600/80">Your finger system is meaningfully fatigued — prioritise sleep and nutrition to recover for tomorrow</div>
               )}
               {worstPct <= -30 && (
-                <div className="text-[10px] text-red-500/80">Elevated injury risk territory — at this level of force drop, returning to hard climbing tomorrow increases the likelihood of connective tissue strain. Consider full rest or light mobility only.</div>
+                <div className="text-[10px] text-red-500/80">Elevated injury risk territory — at this level of force drop, returning to hard climbing tomorrow increases the likelihood of connective tissue strain. Consider full rest or light exercise only.</div>
               )}
             </div>
           </div>
