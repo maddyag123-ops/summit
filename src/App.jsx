@@ -2157,7 +2157,7 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
                 <div className="text-[10px] text-slate-500 mb-1">vs this morning</div>
                 {morningSymmetric ? (
                   <div className="flex justify-between text-xs">
-                    <span className="text-slate-400">Both hands</span>
+                    <span className="text-slate-400">Both hands vs morning baseline</span>
                     <span className={`font-mono font-bold ${getFatigueColor(pctMorningCombined)}`}>
                       {pctMorningCombined > 0 ? '+' : ''}{pctMorningCombined}%
                     </span>
@@ -2166,7 +2166,7 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
                   <div className="flex gap-4">
                     {pctMorningL !== null && (
                       <div className="flex justify-between flex-1 text-xs">
-                        <span className="text-slate-400">Left</span>
+                        <span className="text-slate-400">Left vs morning</span>
                         <span className={`font-mono font-bold ${getFatigueColor(pctMorningL)}`}>
                           {pctMorningL > 0 ? '+' : ''}{pctMorningL}%
                         </span>
@@ -2174,7 +2174,7 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
                     )}
                     {pctMorningR !== null && (
                       <div className="flex justify-between flex-1 text-xs">
-                        <span className="text-slate-400">Right</span>
+                        <span className="text-slate-400">Right vs morning</span>
                         <span className={`font-mono font-bold ${getFatigueColor(pctMorningR)}`}>
                           {pctMorningR > 0 ? '+' : ''}{pctMorningR}%
                         </span>
@@ -2189,7 +2189,7 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
                 <div className="text-[10px] text-slate-500 mb-1">vs 30-day avg</div>
                 {thirtyDaySymmetric ? (
                   <div className="flex justify-between text-xs">
-                    <span className="text-slate-400">Both hands</span>
+                    <span className="text-slate-400">Both hands vs 30-day avg</span>
                     <span className={`font-mono font-bold ${getFatigueColor(pct30DayCombined)}`}>
                       {pct30DayCombined > 0 ? '+' : ''}{pct30DayCombined}%
                     </span>
@@ -2198,7 +2198,7 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
                   <div className="flex gap-4">
                     {pct30DayL !== null && (
                       <div className="flex justify-between flex-1 text-xs">
-                        <span className="text-slate-400">Left</span>
+                        <span className="text-slate-400">Left vs 30-day</span>
                         <span className={`font-mono font-bold ${getFatigueColor(pct30DayL)}`}>
                           {pct30DayL > 0 ? '+' : ''}{pct30DayL}%
                         </span>
@@ -2206,7 +2206,7 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
                     )}
                     {pct30DayR !== null && (
                       <div className="flex justify-between flex-1 text-xs">
-                        <span className="text-slate-400">Right</span>
+                        <span className="text-slate-400">Right vs 30-day</span>
                         <span className={`font-mono font-bold ${getFatigueColor(pct30DayR)}`}>
                           {pct30DayR > 0 ? '+' : ''}{pct30DayR}%
                         </span>
@@ -2217,9 +2217,9 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
               </div>
             )}
             <div className="pt-1 border-t border-slate-700/30 space-y-0.5">
-              <div className="text-[10px] text-slate-600">Expected: −5% to −10% after a normal session</div>
-              <div className="text-[10px] text-amber-600/80">−15% or more: meaningful fatigue — prioritise sleep and nutrition recovery</div>
-              <div className="text-[10px] text-red-500/80">−30% or more: significant neuromuscular fatigue — consider full rest or light mobility only tomorrow</div>
+              <div className="text-[10px] text-slate-600">Expected: −5% to −10% after a normal session (either hand)</div>
+              <div className="text-[10px] text-amber-600/80">−15% or more (either hand): meaningful fatigue — prioritise sleep and nutrition recovery</div>
+              <div className="text-[10px] text-red-500/80">−30% or more (either hand): this could signal significant neuromuscular fatigue — consider full rest or light mobility tomorrow</div>
             </div>
           </div>
         )}
