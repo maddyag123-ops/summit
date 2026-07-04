@@ -691,6 +691,23 @@ export default function ClimbingTracker() {
     }, 0);
   }, [day, daySessions]);
 
+  const morningMarker30DayAvg = useMemo(() => {
+    const mt = day.markerType || 'Tindeq';
+    const cutoff = new Date(selectedDate + 'T12:00:00');
+    cutoff.setDate(cutoff.getDate() - 30);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    const vals = datesSorted
+      .filter(d => d >= cutoffStr && d < selectedDate)
+      .map(d => {
+        const dd = dailyData[d];
+        if (!dd || (dd.markerType || 'Tindeq') !== mt) return null;
+        return dayMarkerAvg(dd, mt);
+      })
+      .filter(v => v && v > 0);
+    if (vals.length < 5) return null;
+    return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10;
+  }, [dailyData, datesSorted, selectedDate, day.markerType]);
+
   const weekOnOffSplit = useMemo(() => {
     const last7 = datesSorted.slice(-7);
     let onWall = 0, offWall = 0;
@@ -1195,7 +1212,7 @@ export default function ClimbingTracker() {
         </div>
       </div>}
       <main className="max-w-2xl mx-auto px-4 py-4 pb-24">
-        {tab === "today" && <TodayView {...{ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, restPattern, loadTrajectory, deloadStatus, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }} />}
+        {tab === "today" && <TodayView {...{ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, restPattern, loadTrajectory, deloadStatus, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData, morningMarker30DayAvg }} />}
         {tab === "climbs" && <ClimbView {...{ selectedDate, shiftDate, climbData, setClimbData, settings, dailyData, setDailyData, profile, datesSorted }} />}
         {tab === "assess" && <AssessView {...{ assessData, setAssessData, settings }} />}
         {tab === "injury" && <InjuryView {...{ injuryData, setInjuryData, dailyData, ewmaData, datesSorted }} />}
@@ -1303,9 +1320,9 @@ function getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedD
   return null;
 }
 
-function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, restPattern, loadTrajectory, deloadStatus, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData }) {
-  const [mode, setMode] = useState("quick"); // "quick" or "full"
-  const [section, setSection] = useState("wellness");
+function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, restPattern, loadTrajectory, deloadStatus, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData, morningMarker30DayAvg }) {
+  const [showForceMarker, setShowForceMarker] = useState(false);
+  const [showForceInfo, setShowForceInfo] = useState(false);
   const isToday = selectedDate === todayStr();
   const unit = settings.unit || "lbs";
 
@@ -1480,13 +1497,7 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
           <div><span className="text-slate-500">Ratio </span><span className={`font-mono font-bold ${todayEWMA.ratio > 1.3 ? "text-amber-400" : todayEWMA.ratio < 0.8 ? "text-sky-400" : "text-emerald-400"}`}>{todayEWMA.ratio}</span></div>
         </div>}
       </Card>
-      {/* Mode toggle */}
-      <div className="flex gap-1 bg-slate-900/50 rounded-xl p-1">
-        <button onClick={() => setMode("quick")} className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${mode === "quick" ? "bg-slate-700/60 text-white" : "text-slate-500 hover:text-slate-300"}`}>Quick Log</button>
-        <button onClick={() => setMode("full")} className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${mode === "full" ? "bg-slate-700/60 text-white" : "text-slate-500 hover:text-slate-300"}`}>Full Detail</button>
-      </div>
-
-      {mode === "quick" && <>
+      {true && <>
         {/* Quick wellness */}
         <Card>
           <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-4">Wellness <span className="text-slate-600">(1=poor, 10=excellent)</span></div>
@@ -1586,35 +1597,56 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
         </Card>
       </>}
 
-      {mode === "full" && <>
-        <div className="flex gap-1 bg-slate-900/50 rounded-xl p-1">
-          {[{ id: "wellness", label: "Wellness" }, { id: "marker", label: "Force Marker" }, { id: "session", label: "Session" }].map(s => (
-            <button key={s.id} onClick={() => setSection(s.id)} className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${section === s.id ? "bg-slate-700/60 text-white" : "text-slate-500 hover:text-slate-300"}`}>{s.label}</button>
-          ))}
-        </div>
-      {section === "wellness" && <Card>
-        <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-4">Morning Wellness <span className="text-slate-600">(1=poor, 10=excellent)</span></div>
-        <div className="space-y-4">
-          <WellnessRow label="Sleep Quality" value={day.sleepQuality} onChange={v => updateDay(selectedDate, "sleepQuality", v)} lowLabel="Terrible" highLabel="Excellent" />
-          <SleepSlider value={day.sleepDuration} onChange={v => updateDay(selectedDate, "sleepDuration", v)} />
-          <WellnessRow label="Muscle Soreness" value={day.soreness} onChange={v => updateDay(selectedDate, "soreness", v)} lowLabel="Extremely sore" highLabel="No soreness" />
-          <WellnessRow label="Finger Soreness" value={day.fingerSoreness} onChange={v => updateDay(selectedDate, "fingerSoreness", v)} lowLabel="Extremely sore" highLabel="No soreness" />
-          <WellnessRow label="Stress" value={day.stress} onChange={v => updateDay(selectedDate, "stress", v)} lowLabel="Extremely stressed" highLabel="No stress" />
-          <WellnessRow label="Motivation" value={day.motivation} onChange={v => updateDay(selectedDate, "motivation", v)} lowLabel="Not motivated at all" highLabel="Extremely motivated" />
-        </div>
-        <div className="mt-4 pt-3 border-t border-slate-700/30">
-          <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5 block">Today's Conditions <span className="text-slate-600">(optional)</span></label>
-          <div className="flex gap-1 bg-slate-900/60 rounded-lg p-0.5 border border-slate-700/40">
-            {["Hot", "Warm", "Cool", "Cold"].map(opt => (
-              <button key={opt} onClick={() => updateDay(selectedDate, "conditions", day.conditions === opt ? "" : opt)}
-                className={`flex-1 py-1.5 px-1 rounded-md text-[10px] font-semibold transition-all ${day.conditions === opt ? `${CONDITION_COLORS[opt]} border` : "text-slate-500 hover:text-slate-300"}`}>{opt}</button>
-            ))}
+      {/* Force Marker — collapsible optional section */}
+      <div className="flex items-center justify-between mt-4">
+        <button onClick={() => setShowForceMarker(p => !p)}
+          className="flex items-center gap-2 text-xs font-semibold text-slate-400 hover:text-slate-200 transition-all">
+          {showForceMarker ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          Force Marker (optional)
+        </button>
+        <button onClick={() => setShowForceInfo(p => !p)}
+          className="text-slate-600 hover:text-slate-400 transition-all">
+          <span className="text-[11px] border border-slate-600 rounded-full w-4 h-4 inline-flex items-center justify-center">i</span>
+        </button>
+      </div>
+      {showForceInfo && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-6"
+          onClick={() => setShowForceInfo(false)}>
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-5 max-w-sm w-full space-y-4"
+            onClick={e => e.stopPropagation()}>
+            <div className="text-sm font-bold text-slate-200">When to take force readings</div>
+            <div className="space-y-3">
+              <div>
+                <div className="text-[10px] font-bold text-sky-400 uppercase tracking-wider mb-1">Morning</div>
+                <div className="text-xs text-slate-400">Today tab — Force Marker section</div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 rounded-full bg-sky-400 shrink-0" />
+                <div className="flex-1 h-px bg-slate-700" />
+                <div className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+                <div className="flex-1 h-px bg-slate-700" />
+                <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-[10px] text-slate-500 text-center">
+                <span>Wake up</span>
+                <span>Post warmup</span>
+                <span>Post session</span>
+              </div>
+              <div className="space-y-2 text-[10px] text-slate-400">
+                <div><span className="text-sky-400 font-semibold">Wake up:</span> Before coffee or activity — helps us understand your morning readiness state.</div>
+                <div><span className="text-amber-400 font-semibold">Post warmup:</span> After you feel warmed up and ready to start trying hard, take one more reading. This is your session baseline.</div>
+                <div><span className="text-emerald-400 font-semibold">Post session:</span> After your last climb of the day, take a final reading. Comparing this to your morning and warmup numbers helps show how fatiguing your session was.</div>
+              </div>
+            </div>
+            <button onClick={() => setShowForceInfo(false)}
+              className="w-full py-2 text-xs text-slate-500 hover:text-slate-300">Done</button>
           </div>
         </div>
-      </Card>}
-      {section === "marker" && <Card>
-        <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Objective Readiness Marker</div>
-        <p className="text-[10px] text-slate-600 mb-4">Cold pull — peak force only, both hands. RFD tracked post-warmup.</p>
+      )}
+      {showForceMarker && <Card>
+        <p className="text-[10px] text-slate-500 mb-3">
+          When you wake up, before coffee or activity, take a pull on your Tindeq or dynamometer. This helps us understand your morning readiness state.
+        </p>
         <div className="mb-4"><label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5 block">Instrument</label><InstrumentToggle value={day.markerType || settings.instrument} onChange={v => updateDay(selectedDate, "markerType", v)} /></div>
         {(day.markerType === "Dynamometer") && <ForcePair labelL={`Grip Left (${unit})`} labelR={`Grip Right (${unit})`} valueL={day.gripL} valueR={day.gripR} onChangeL={v => updateDay(selectedDate, "gripL", v)} onChangeR={v => updateDay(selectedDate, "gripR", v)} />}
         {(day.markerType === "Tindeq" || !day.markerType) && <>
@@ -1625,7 +1657,6 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
           const allDates = Object.keys(dailyData).sort();
           const mt = day.markerType || "Tindeq";
           const intensity = day.tindeqIntensity || "Try Hard";
-          // For Tindeq, compare to same grip+intensity combo. For dynamometer, simple.
           const sameIntensityVals = mt === "Tindeq"
             ? allDates.map(d => {
                 const ddd = dailyData[d]; if (!ddd) return 0;
@@ -1649,71 +1680,41 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
             </div>}
           </div>;
         })()}
+        {/* Change 3 — morning marker logged confirmation with 30-day comparison */}
+        {morningMarker30DayAvg !== undefined && (() => {
+          const mt = day.markerType || 'Tindeq';
+          const curAvg = dayMarkerAvg(day, mt);
+          if (!curAvg) return null;
+          const pct = morningMarker30DayAvg
+            ? Math.round(((curAvg - morningMarker30DayAvg) / morningMarker30DayAvg) * 100)
+            : null;
+          const pctColor = pct === null ? 'text-slate-400'
+            : pct >= 5 ? 'text-emerald-400'
+            : pct >= -5 ? 'text-slate-300'
+            : pct >= -15 ? 'text-amber-400'
+            : 'text-amber-500';
+          return (
+            <div className="mt-3 bg-slate-900/40 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <span className="text-[10px] text-emerald-400 font-semibold">Morning marker logged</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-400">Today: {Math.round(curAvg * 10) / 10} {unit}</span>
+                {pct !== null && (
+                  <span className={`font-mono font-bold ${pctColor}`}>
+                    {pct > 0 ? '+' : ''}{pct}% vs 30-day avg ({morningMarker30DayAvg} {unit})
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })()}
         <div className="mt-4 pt-3 border-t border-slate-700/30">
           <Input label="Morning HRV (ms, optional)" value={day.hrv} onChange={v => updateDay(selectedDate, "hrv", v)} type="number" placeholder="e.g., 65" />
           <p className="text-[10px] text-slate-600 mt-1">From Polar, Garmin, Apple Watch, or HRV4Training</p>
         </div>
       </Card>}
-      {section === "session" && <div className="space-y-3">
-        {daySessions.map((sess, idx) => {
-          const sLoad = (Number(sess.sessionDuration) || 0) * (Number(sess.sessionRPE) || 0);
-          const updateSess = (f, v) => {
-            setDailyData(prev => {
-              const d = prev[selectedDate] || emptyDay();
-              if (f === 'sessionType' && v === 'Rest') {
-                return { ...prev, [selectedDate]: { ...d, sessions: [{ ...emptySession(), sessionType: 'Rest' }], sessionLoad: 0, sessionDuration: undefined, sessionRPE: undefined, sessionType: undefined } };
-              }
-              const sessions = [...(d.sessions && d.sessions.length > 0 ? d.sessions : daySessions)];
-              const updated = { ...sessions[idx], [f]: v };
-              if (f === 'sessionType') {
-                updated.sessionDuration = '';
-                updated.sessionRPE = '';
-              }
-              sessions[idx] = updated;
-              return { ...prev, [selectedDate]: { ...d, sessions, sessionDuration: undefined, sessionRPE: undefined, sessionType: undefined } };
-            });
-          };
-          const removeSess = () => {
-            setDailyData(prev => {
-              const d = prev[selectedDate] || emptyDay();
-              const sessions = [...(d.sessions && d.sessions.length > 0 ? d.sessions : daySessions)].filter((_, i) => i !== idx);
-              return { ...prev, [selectedDate]: { ...d, sessions } };
-            });
-          };
-          return <Card key={idx}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-[10px] text-slate-500 uppercase tracking-wider">Session {idx + 1}</div>
-              {daySessions.length > 1 && <button onClick={removeSess} className="text-red-400/50 hover:text-red-400"><Trash2 size={13} /></button>}
-            </div>
-            <Select label="Session Type" value={sess.sessionType} onChange={v => updateSess("sessionType", v)} options={SESSION_TYPES} className="mb-3" />
-            {sess.sessionType !== "Rest" && <>
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                <Input label="Duration (min)" value={sess.sessionDuration} onChange={v => updateSess("sessionDuration", v)} type="number" step="10" />
-                <Input label="RPE (1-10)" value={sess.sessionRPE} onChange={v => updateSess("sessionRPE", v)} type="number" min="1" max="10" />
-              </div>
-              {sLoad > 0 && <div className="bg-slate-900/50 rounded-lg p-2.5 flex items-center justify-between mb-3"><span className="text-xs text-slate-500">Load</span><span className="text-sm font-bold text-sky-400 font-mono">{sLoad}<span className="text-xs text-slate-600"> AU</span></span></div>}
-              {OUTDOOR_SESSION_TYPES.has(sess.sessionType) && <div className="flex flex-col gap-1 mb-3">
-                <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Outdoor</label>
-                <button onClick={() => updateSess("outdoor", !sess.outdoor)}
-                  className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-semibold transition-all border ${sess.outdoor ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-lg shadow-emerald-500/10" : "bg-slate-900/60 text-slate-500 border-slate-600/50 hover:border-slate-500"}`}>
-                  {sess.outdoor ? <><Check size={14} /> Outdoor</> : "Indoor"}
-                </button>
-              </div>}
-            </>}
-            <Input label="Notes" value={sess.notes} onChange={v => updateSess("notes", v)} placeholder="Session notes..." />
-          </Card>;
-        })}
-        <button onClick={() => {
-          setDailyData(prev => {
-            const d = prev[selectedDate] || emptyDay();
-            const sessions = [...(d.sessions && d.sessions.length > 0 ? d.sessions : daySessions), emptySession()];
-            return { ...prev, [selectedDate]: { ...d, sessions } };
-          });
-        }} className="w-full py-2.5 border-2 border-dashed border-slate-700/50 rounded-xl text-slate-500 hover:text-sky-400 hover:border-sky-500/30 transition-all flex items-center justify-center gap-2 text-xs font-medium"><Plus size={14} /> Add Session</button>
-        {sessionLoad > 0 && daySessions.length > 1 && <div className="bg-slate-900/50 rounded-lg p-3 flex items-center justify-between"><span className="text-xs text-slate-500">Total Day Load</span><span className="text-lg font-bold text-sky-400 font-mono">{sessionLoad}<span className="text-xs text-slate-600"> AU</span></span></div>}
-        <Input label="Day Notes" value={day.notes} onChange={v => updateDay(selectedDate, "notes", v)} placeholder="General notes for the day..." />
-      </div>}
-      </>}
     </div>
   );
 }
@@ -1972,7 +1973,8 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
       </div>
 
       <Card>
-        <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">Post-Warmup Baseline</div>
+        <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Post-Warmup Baseline</div>
+        <p className="text-[10px] text-slate-500 mb-3">After you feel warmed up and ready to start trying hard, take one more reading. This is your session baseline — used to calculate how much each climb affects your force output.</p>
         {hasMarker && baselineEmpty && <button onClick={() => {
           const gf = gripFields("tindeq", dayData.tindeqGripType, dayData.tindeqIntensity);
           if (dayData[gf.L]) updateDC("baselineL", dayData[gf.L]);
