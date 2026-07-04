@@ -1927,6 +1927,11 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
     ? Math.round((pct30DayL + pct30DayR) / 2)
     : pct30DayL ?? pct30DayR;
 
+  const worstPct = (() => {
+    const vals = [pctMorningL, pctMorningR, pct30DayL, pct30DayR].filter(v => v !== null);
+    return vals.length > 0 ? Math.min(...vals) : 0;
+  })();
+
   const projectSuggestions = useMemo(() => {
     const seen = new Set();
     const projects = [];
@@ -2235,8 +2240,12 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
             )}
             <div className="pt-1 border-t border-slate-700/30 space-y-0.5">
               <div className="text-[10px] text-slate-600">Expected: −5% to −10% after a normal session (either hand)</div>
-              <div className="text-[10px] text-amber-600/80">−15% or more (either hand): meaningful fatigue — prioritise sleep and nutrition recovery</div>
-              <div className="text-[10px] text-red-500/80">−30% or more (either hand): this could signal significant neuromuscular fatigue — consider full rest or light mobility tomorrow</div>
+              {worstPct <= -15 && worstPct > -30 && (
+                <div className="text-[10px] text-amber-600/80">Your finger system is meaningfully fatigued — prioritise sleep and nutrition to recover for tomorrow</div>
+              )}
+              {worstPct <= -30 && (
+                <div className="text-[10px] text-red-500/80">Elevated injury risk territory — at this level of force drop, returning to hard climbing tomorrow increases the likelihood of connective tissue strain. Consider full rest or light mobility only.</div>
+              )}
             </div>
           </div>
         )}
