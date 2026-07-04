@@ -1836,6 +1836,7 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
   };
 
   const getFatigueColor = (pct) => {
+    if (pct === null || pct === undefined) return 'text-slate-400';
     if (pct >= 0) return 'text-emerald-400';
     if (pct >= -10) return 'text-slate-300';
     if (pct >= -15) return 'text-amber-400';
@@ -1843,22 +1844,24 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
     return 'text-red-600';
   };
 
-  // Session baseline (post-warmup) — read directly from dc to avoid
-  // indirect dailyData field-name construction that can pick up cross-populated
-  // small values (e.g. baselineL="1.0" written via the cross-populate useEffect).
-  const morningMarker = (() => {
-    const instrument = dc.baselineInstrument || settings.instrument;
-    if (instrument === 'Dynamometer') {
-      const l = Number(dc.baselineGripL); const r = Number(dc.baselineGripR);
-      if (!l && !r) return null;
-      return avg(l, r);
-    }
-    const l = Number(dc.baselineL); const r = Number(dc.baselineR);
-    if (!l && !r) return null;
-    return avg(l, r);
-  })();
+  // Per-side session baseline (post-warmup) — read directly from dc
+  const morningL = Number(dc.baselineL) || 0;
+  const morningR = Number(dc.baselineR) || 0;
 
-  const postSession30DayMean = (() => {
+  // Per-side post-session values
+  const postL = Number(dc.postSessionPeakL) || 0;
+  const postR = Number(dc.postSessionPeakR) || 0;
+
+  // Per-side % from morning baseline
+  const pctMorningL = morningL > 0 && postL > 0 ? Math.round(((postL - morningL) / morningL) * 100) : null;
+  const pctMorningR = morningR > 0 && postR > 0 ? Math.round(((postR - morningR) / morningR) * 100) : null;
+  const morningSymmetric = pctMorningL !== null && pctMorningR !== null && Math.abs(pctMorningL - pctMorningR) <= 5;
+  const pctMorningCombined = pctMorningL !== null && pctMorningR !== null
+    ? Math.round((pctMorningL + pctMorningR) / 2)
+    : pctMorningL ?? pctMorningR;
+
+  // Per-side 30-day rolling means
+  const postSession30DayMeanL = (() => {
     const gt = dc.postSessionGripType || 'Half Crimp';
     const gi = dc.postSessionIntensity || 'Try Hard';
     const cutoff = new Date(selectedDate);
@@ -1871,35 +1874,41 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
         if (!pastDC) return null;
         if ((pastDC.postSessionGripType || 'Half Crimp') !== gt) return null;
         if ((pastDC.postSessionIntensity || 'Try Hard') !== gi) return null;
-        const l = Number(pastDC.postSessionPeakL); const r = Number(pastDC.postSessionPeakR);
-        if (!l && !r) return null;
-        return avg(l, r);
+        const v = Number(pastDC.postSessionPeakL);
+        return v > 0 ? v : null;
       })
-      .filter(v => v && v > 0);
+      .filter(v => v !== null);
     if (vals.length < 3) return null;
     return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10;
   })();
 
-  const postSessionCurrent = (() => {
-    if ((dc.postSessionInstrument || settings.instrument) === 'Dynamometer') {
-      const l = Number(dc.postSessionGripL); const r = Number(dc.postSessionGripR);
-      if (!l && !r) return null;
-      return avg(l, r);
-    }
-    const l = Number(dc.postSessionPeakL); const r = Number(dc.postSessionPeakR);
-    if (!l && !r) return null;
-    return avg(l, r);
+  const postSession30DayMeanR = (() => {
+    const gt = dc.postSessionGripType || 'Half Crimp';
+    const gi = dc.postSessionIntensity || 'Try Hard';
+    const cutoff = new Date(selectedDate);
+    cutoff.setDate(cutoff.getDate() - 30);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    const vals = (datesSorted || [])
+      .filter(d => d >= cutoffStr && d < selectedDate)
+      .map(d => {
+        const pastDC = climbData[d];
+        if (!pastDC) return null;
+        if ((pastDC.postSessionGripType || 'Half Crimp') !== gt) return null;
+        if ((pastDC.postSessionIntensity || 'Try Hard') !== gi) return null;
+        const v = Number(pastDC.postSessionPeakR);
+        return v > 0 ? v : null;
+      })
+      .filter(v => v !== null);
+    if (vals.length < 3) return null;
+    return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10;
   })();
 
-  console.log('[Fatigue debug] morningMarker:', morningMarker);
-  console.log('[Fatigue debug] postSessionCurrent:', postSessionCurrent);
-  const pctFromMorning = morningMarker && postSessionCurrent
-    ? Math.round(((postSessionCurrent - morningMarker) / morningMarker) * 100)
-    : null;
-  console.log('[Fatigue debug] pctFromMorning raw:', pctFromMorning);
-  const pctFrom30Day = postSession30DayMean && postSessionCurrent
-    ? Math.round(((postSessionCurrent - postSession30DayMean) / postSession30DayMean) * 100)
-    : null;
+  const pct30DayL = postSession30DayMeanL && postL > 0 ? Math.round(((postL - postSession30DayMeanL) / postSession30DayMeanL) * 100) : null;
+  const pct30DayR = postSession30DayMeanR && postR > 0 ? Math.round(((postR - postSession30DayMeanR) / postSession30DayMeanR) * 100) : null;
+  const thirtyDaySymmetric = pct30DayL !== null && pct30DayR !== null && Math.abs(pct30DayL - pct30DayR) <= 5;
+  const pct30DayCombined = pct30DayL !== null && pct30DayR !== null
+    ? Math.round((pct30DayL + pct30DayR) / 2)
+    : pct30DayL ?? pct30DayR;
 
   const projectSuggestions = useMemo(() => {
     const seen = new Set();
@@ -2140,29 +2149,77 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
             <ForcePair labelL={`Grip L (${unit})`} labelR={`Grip R (${unit})`} valueL={dc.postSessionGripL || ''} valueR={dc.postSessionGripR || ''} onChangeL={v => updateDC('postSessionGripL', v)} onChangeR={v => updateDC('postSessionGripR', v)} />
           </div>
         )}
-        {postSessionCurrent && (pctFromMorning !== null || pctFrom30Day !== null) && (
-          <div className="mt-3 bg-slate-900/40 rounded-lg p-3 space-y-1.5">
+        {(postL > 0 || postR > 0) && (pctMorningL !== null || pctMorningR !== null || pct30DayL !== null || pct30DayR !== null) && (
+          <div className="mt-3 bg-slate-900/40 rounded-lg p-3 space-y-2">
             <div className="text-[10px] text-slate-500 uppercase tracking-wider">Session Fatigue</div>
-            {pctFromMorning !== null && (
-              <div className="flex justify-between text-xs">
-                <span className="text-slate-400">vs this morning</span>
-                <span className={`font-mono font-bold ${getFatigueColor(pctFromMorning)}`}>
-                  {pctFromMorning > 0 ? '+' : ''}{pctFromMorning}%
-                </span>
+            {(pctMorningL !== null || pctMorningR !== null) && (
+              <div>
+                <div className="text-[10px] text-slate-500 mb-1">vs this morning</div>
+                {morningSymmetric ? (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-slate-400">Both hands</span>
+                    <span className={`font-mono font-bold ${getFatigueColor(pctMorningCombined)}`}>
+                      {pctMorningCombined > 0 ? '+' : ''}{pctMorningCombined}%
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex gap-4">
+                    {pctMorningL !== null && (
+                      <div className="flex justify-between flex-1 text-xs">
+                        <span className="text-slate-400">Left</span>
+                        <span className={`font-mono font-bold ${getFatigueColor(pctMorningL)}`}>
+                          {pctMorningL > 0 ? '+' : ''}{pctMorningL}%
+                        </span>
+                      </div>
+                    )}
+                    {pctMorningR !== null && (
+                      <div className="flex justify-between flex-1 text-xs">
+                        <span className="text-slate-400">Right</span>
+                        <span className={`font-mono font-bold ${getFatigueColor(pctMorningR)}`}>
+                          {pctMorningR > 0 ? '+' : ''}{pctMorningR}%
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
-            {pctFrom30Day !== null && (
-              <div className="flex justify-between text-xs">
-                <span className="text-slate-400">vs 30-day avg</span>
-                <span className={`font-mono font-bold ${getFatigueColor(pctFrom30Day)}`}>
-                  {pctFrom30Day > 0 ? '+' : ''}{pctFrom30Day}%
-                </span>
+            {(pct30DayL !== null || pct30DayR !== null) && (
+              <div>
+                <div className="text-[10px] text-slate-500 mb-1">vs 30-day avg</div>
+                {thirtyDaySymmetric ? (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-slate-400">Both hands</span>
+                    <span className={`font-mono font-bold ${getFatigueColor(pct30DayCombined)}`}>
+                      {pct30DayCombined > 0 ? '+' : ''}{pct30DayCombined}%
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex gap-4">
+                    {pct30DayL !== null && (
+                      <div className="flex justify-between flex-1 text-xs">
+                        <span className="text-slate-400">Left</span>
+                        <span className={`font-mono font-bold ${getFatigueColor(pct30DayL)}`}>
+                          {pct30DayL > 0 ? '+' : ''}{pct30DayL}%
+                        </span>
+                      </div>
+                    )}
+                    {pct30DayR !== null && (
+                      <div className="flex justify-between flex-1 text-xs">
+                        <span className="text-slate-400">Right</span>
+                        <span className={`font-mono font-bold ${getFatigueColor(pct30DayR)}`}>
+                          {pct30DayR > 0 ? '+' : ''}{pct30DayR}%
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
-            <div className="space-y-0.5 mt-1">
+            <div className="pt-1 border-t border-slate-700/30 space-y-0.5">
               <div className="text-[10px] text-slate-600">Expected: −5% to −10% after a normal session</div>
-              <div className="text-[10px] text-amber-600">−15% or more: meaningful fatigue — monitor recovery</div>
-              <div className="text-[10px] text-red-500">−30% or more: significant fatigue — consider rest tomorrow</div>
+              <div className="text-[10px] text-amber-600/80">−15% or more: meaningful fatigue — prioritise sleep and nutrition recovery</div>
+              <div className="text-[10px] text-red-500/80">−30% or more: significant neuromuscular fatigue — consider full rest or light mobility only tomorrow</div>
             </div>
           </div>
         )}
