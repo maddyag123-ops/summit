@@ -1023,6 +1023,12 @@ export default function ClimbingTracker() {
     monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
     const currentWeekKey = monday.toISOString().slice(0, 10);
 
+    const inDeloadWindow = (checkDate) =>
+      (profile?.deloadWeeks || []).some(startDate => {
+        const diff = Math.round((new Date(checkDate + 'T12:00:00') - new Date(startDate + 'T12:00:00')) / 86400000);
+        return diff >= 0 && diff <= 6;
+      });
+
     const isDeloadWeek = (weekKey, weekLoad) => {
       const idx = weeks.findIndex(([k]) => k === weekKey);
       if (idx < 4) return false;
@@ -1030,7 +1036,8 @@ export default function ClimbingTracker() {
       const avg = prev4.reduce((a, b) => a + b, 0) / 4;
       if (avg === 0) return false;
       const autoDetected = weekLoad < avg * 0.6;
-      const manuallyMarked = (profile?.deloadWeeks || []).includes(weekKey);
+      // For historical week detection, check if any day in that week falls in a deload window
+      const manuallyMarked = inDeloadWindow(weekKey);
       return autoDetected || manuallyMarked;
     };
 
@@ -1044,7 +1051,7 @@ export default function ClimbingTracker() {
     }
 
     const currentWeekLoad = weeklyLoads[currentWeekKey] || 0;
-    const isCurrentDeload = isDeloadWeek(currentWeekKey, currentWeekLoad);
+    const isCurrentDeload = isDeloadWeek(currentWeekKey, currentWeekLoad) || inDeloadWindow(selectedDate);
     const chronicLoad = ewmaData[selectedDate]?.chronic || 0;
 
     return {
@@ -1453,9 +1460,8 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
           <button
             onClick={() => {
               const weeks = profile?.deloadWeeks || [];
-              const key = deloadStatus.currentWeekKey;
-              if (!key) return;
-              setProfile(p => ({ ...p, deloadWeeks: [...weeks, key] }));
+              if (weeks.includes(selectedDate)) return;
+              setProfile(p => ({ ...p, deloadWeeks: [...weeks, selectedDate] }));
             }}
             className="mt-1 text-[10px] text-sky-400 hover:text-sky-300">
             Mark this week as deload →
@@ -1548,19 +1554,30 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
             <button
               onClick={() => {
                 const weeks = profile?.deloadWeeks || [];
-                const key = deloadStatus.currentWeekKey;
-                if (!key) return;
-                const updated = weeks.includes(key)
-                  ? weeks.filter(w => w !== key)
-                  : [...weeks, key];
+                const isInWindow = weeks.some(startDate => {
+                  const diff = Math.round((new Date(selectedDate + 'T12:00:00') - new Date(startDate + 'T12:00:00')) / 86400000);
+                  return diff >= 0 && diff <= 6;
+                });
+                const updated = isInWindow
+                  ? weeks.filter(startDate => {
+                      const diff = Math.round((new Date(selectedDate + 'T12:00:00') - new Date(startDate + 'T12:00:00')) / 86400000);
+                      return !(diff >= 0 && diff <= 6);
+                    })
+                  : [...weeks, selectedDate];
                 setProfile(p => ({ ...p, deloadWeeks: updated }));
               }}
               className={`mt-2 w-full py-1.5 rounded-lg text-[10px] font-semibold transition-all border ${
-                (profile?.deloadWeeks || []).includes(deloadStatus.currentWeekKey)
+                (profile?.deloadWeeks || []).some(startDate => {
+                  const diff = Math.round((new Date(selectedDate + 'T12:00:00') - new Date(startDate + 'T12:00:00')) / 86400000);
+                  return diff >= 0 && diff <= 6;
+                })
                   ? "bg-violet-500/20 text-violet-300 border-violet-500/30"
                   : "bg-slate-900/40 text-slate-500 border-slate-700/30 hover:text-slate-300"
               }`}>
-              {(profile?.deloadWeeks || []).includes(deloadStatus.currentWeekKey)
+              {(profile?.deloadWeeks || []).some(startDate => {
+                const diff = Math.round((new Date(selectedDate + 'T12:00:00') - new Date(startDate + 'T12:00:00')) / 86400000);
+                return diff >= 0 && diff <= 6;
+              })
                 ? "✓ Marked as deload week"
                 : "Mark this as a deload week"}
             </button>
