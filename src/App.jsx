@@ -1843,13 +1843,17 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
     return 'text-red-600';
   };
 
+  // Session baseline (post-warmup) — read directly from dc to avoid
+  // indirect dailyData field-name construction that can pick up cross-populated
+  // small values (e.g. baselineL="1.0" written via the cross-populate useEffect).
   const morningMarker = (() => {
-    const dd = dailyData[selectedDate];
-    if (!dd) return null;
-    const gt = dc.postSessionGripType || 'Half Crimp';
-    const gi = dc.postSessionIntensity || 'Try Hard';
-    const gf = gripFields('tindeq', gt, gi);
-    const l = Number(dd[gf.L]); const r = Number(dd[gf.R]);
+    const instrument = dc.baselineInstrument || settings.instrument;
+    if (instrument === 'Dynamometer') {
+      const l = Number(dc.baselineGripL); const r = Number(dc.baselineGripR);
+      if (!l && !r) return null;
+      return avg(l, r);
+    }
+    const l = Number(dc.baselineL); const r = Number(dc.baselineR);
     if (!l && !r) return null;
     return avg(l, r);
   })();
@@ -1887,9 +1891,12 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
     return avg(l, r);
   })();
 
+  console.log('[Fatigue debug] morningMarker:', morningMarker);
+  console.log('[Fatigue debug] postSessionCurrent:', postSessionCurrent);
   const pctFromMorning = morningMarker && postSessionCurrent
     ? Math.round(((postSessionCurrent - morningMarker) / morningMarker) * 100)
     : null;
+  console.log('[Fatigue debug] pctFromMorning raw:', pctFromMorning);
   const pctFrom30Day = postSession30DayMean && postSessionCurrent
     ? Math.round(((postSessionCurrent - postSession30DayMean) / postSession30DayMean) * 100)
     : null;
