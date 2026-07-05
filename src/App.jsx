@@ -1602,7 +1602,7 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
         <button onClick={() => setShowForceMarker(p => !p)}
           className="flex items-center gap-2 text-xs font-semibold text-slate-400 hover:text-slate-200 transition-all">
           {showForceMarker ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          Force Marker (optional)
+          Force Marker
         </button>
         <button onClick={() => setShowForceInfo(p => !p)}
           className="text-slate-600 hover:text-slate-400 transition-all">
