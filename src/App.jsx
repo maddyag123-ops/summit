@@ -1046,30 +1046,7 @@ export default function ClimbingTracker() {
         return diff >= 0 && diff <= 6;
       });
 
-    const isDeloadWeek = (weekKey, weekLoad) => {
-      const idx = weeks.findIndex(([k]) => k === weekKey);
-      if (idx < 4) return false;
-      const prev4 = weeks.slice(idx - 4, idx).map(([, l]) => l);
-      const avg = prev4.reduce((a, b) => a + b, 0) / 4;
-      if (avg === 0) return false;
-      const autoDetected = weekLoad > 0 && last4WeeksLoad > 0 && weekLoad < last4WeeksLoad * 0.6;
-      // For historical week detection, check if any day in that week falls in a deload window
-      const manuallyMarked = inDeloadWindow(weekKey);
-      return autoDetected || manuallyMarked;
-    };
-
-    let weeksSinceDeload = 0;
-    const currentIdx = weeks.findIndex(([k]) => k === currentWeekKey);
-    const weeksToCheck = currentIdx >= 0 ? weeks.slice(0, currentIdx) : weeks;
-    for (let i = weeksToCheck.length - 1; i >= 0; i--) {
-      const [k, l] = weeksToCheck[i];
-      if (isDeloadWeek(k, l)) break;
-      weeksSinceDeload++;
-    }
-
-    const currentWeekLoad = weeklyLoads[currentWeekKey] || 0;
-
-    // Average weekly load from last 4 complete weeks of actual session data
+    // Average weekly load from last 4 complete weeks — must be declared before isDeloadWeek
     const last4WeeksLoad = (() => {
       const todayD = new Date(selectedDate + 'T12:00:00');
       const weekTotals = [];
@@ -1098,6 +1075,24 @@ export default function ClimbingTracker() {
     const deloadTargetLow = Math.round(last4WeeksLoad * 0.4);
     const deloadTargetHigh = Math.round(last4WeeksLoad * 0.6);
 
+    const isDeloadWeek = (weekKey, weekLoad) => {
+      const idx = weeks.findIndex(([k]) => k === weekKey);
+      if (idx < 4) return false;
+      const autoDetected = weekLoad > 0 && last4WeeksLoad > 0 && weekLoad < last4WeeksLoad * 0.6;
+      const manuallyMarked = inDeloadWindow(weekKey);
+      return autoDetected || manuallyMarked;
+    };
+
+    let weeksSinceDeload = 0;
+    const currentIdx = weeks.findIndex(([k]) => k === currentWeekKey);
+    const weeksToCheck = currentIdx >= 0 ? weeks.slice(0, currentIdx) : weeks;
+    for (let i = weeksToCheck.length - 1; i >= 0; i--) {
+      const [k, l] = weeksToCheck[i];
+      if (isDeloadWeek(k, l)) break;
+      weeksSinceDeload++;
+    }
+
+    const currentWeekLoad = weeklyLoads[currentWeekKey] || 0;
     const isCurrentDeload = isDeloadWeek(currentWeekKey, currentWeekLoad) || inDeloadWindow(selectedDate);
 
     const activeDeloadStart = (profile?.deloadWeeks || []).find(startDate => {
