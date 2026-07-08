@@ -1052,7 +1052,7 @@ export default function ClimbingTracker() {
       const prev4 = weeks.slice(idx - 4, idx).map(([, l]) => l);
       const avg = prev4.reduce((a, b) => a + b, 0) / 4;
       if (avg === 0) return false;
-      const autoDetected = weekLoad < avg * 0.6;
+      const autoDetected = weekLoad > 0 && last4WeeksLoad > 0 && weekLoad < last4WeeksLoad * 0.6;
       // For historical week detection, check if any day in that week falls in a deload window
       const manuallyMarked = inDeloadWindow(weekKey);
       return autoDetected || manuallyMarked;
@@ -1068,10 +1068,37 @@ export default function ClimbingTracker() {
     }
 
     const currentWeekLoad = weeklyLoads[currentWeekKey] || 0;
+
+    // Average weekly load from last 4 complete weeks of actual session data
+    const last4WeeksLoad = (() => {
+      const todayD = new Date(selectedDate + 'T12:00:00');
+      const weekTotals = [];
+      for (let w = 1; w <= 4; w++) {
+        const weekEnd = new Date(todayD);
+        weekEnd.setDate(todayD.getDate() - (w - 1) * 7);
+        const weekStart = new Date(weekEnd);
+        weekStart.setDate(weekEnd.getDate() - 7);
+        const weekStartStr = weekStart.toISOString().slice(0, 10);
+        const weekEndStr = weekEnd.toISOString().slice(0, 10);
+        const weekLoad = datesSorted
+          .filter(d => d >= weekStartStr && d < weekEndStr)
+          .reduce((sum, d) => {
+            const sessions = dailyData[d]?.sessions || [];
+            return sum + sessions.reduce((s2, sess) => {
+              if (sess.sessionType === 'Rest' || !sess.sessionDuration || !sess.sessionRPE) return s2;
+              return s2 + (Number(sess.sessionDuration) || 0) * (Number(sess.sessionRPE) || 0);
+            }, 0);
+          }, 0);
+        if (weekLoad > 0) weekTotals.push(weekLoad);
+      }
+      if (weekTotals.length === 0) return 0;
+      return Math.round(weekTotals.reduce((a, b) => a + b, 0) / weekTotals.length);
+    })();
+
+    const deloadTargetLow = Math.round(last4WeeksLoad * 0.4);
+    const deloadTargetHigh = Math.round(last4WeeksLoad * 0.6);
+
     const isCurrentDeload = isDeloadWeek(currentWeekKey, currentWeekLoad) || inDeloadWindow(selectedDate);
-    const chronicLoad = ewmaData[selectedDate]?.chronic || 0;
-    const deloadTargetLow = Math.round(chronicLoad * 0.5);
-    const deloadTargetHigh = Math.round(chronicLoad * 0.6);
 
     const activeDeloadStart = (profile?.deloadWeeks || []).find(startDate => {
       const start = new Date(startDate + 'T12:00:00');
@@ -1099,12 +1126,6 @@ export default function ClimbingTracker() {
         }, 0);
     })();
 
-    console.log('[Deload debug] activeDeloadStart:', activeDeloadStart);
-    console.log('[Deload debug] selectedDate:', selectedDate);
-    console.log('[Deload debug] dates in range:', datesSorted.filter(d => activeDeloadStart && d >= activeDeloadStart && d <= selectedDate));
-    console.log('[Deload debug] currentWeekLoad:', deloadWeekLoad);
-    console.log('[Deload debug] deloadDayNumber:', deloadDayNumber);
-
     const projectedWeekLoad = deloadDayNumber && deloadDayNumber > 0
       ? Math.round((deloadWeekLoad / deloadDayNumber) * 7)
       : 0;
@@ -1126,7 +1147,7 @@ export default function ClimbingTracker() {
       overTarget,
       activeDeloadStart,
     };
-  }, [dailyData, datesSorted, selectedDate, ewmaData, profile]);
+  }, [dailyData, datesSorted, selectedDate, profile]);
   const shiftDate = (days) => { const d = new Date(selectedDate + "T12:00:00"); d.setDate(d.getDate() + days); setSelectedDate(d.toISOString().slice(0, 10)); };
 
   const showStatus = (type, msg) => {
