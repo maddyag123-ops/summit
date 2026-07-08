@@ -1070,13 +1070,55 @@ export default function ClimbingTracker() {
     const currentWeekLoad = weeklyLoads[currentWeekKey] || 0;
     const isCurrentDeload = isDeloadWeek(currentWeekKey, currentWeekLoad) || inDeloadWindow(selectedDate);
     const chronicLoad = ewmaData[selectedDate]?.chronic || 0;
+    const deloadTargetLow = Math.round(chronicLoad * 0.5);
+    const deloadTargetHigh = Math.round(chronicLoad * 0.6);
+
+    const activeDeloadStart = (profile?.deloadWeeks || []).find(startDate => {
+      const start = new Date(startDate + 'T12:00:00');
+      const today = new Date(selectedDate + 'T12:00:00');
+      const diffDays = Math.round((today - start) / 86400000);
+      return diffDays >= 0 && diffDays <= 6;
+    });
+
+    const deloadDayNumber = activeDeloadStart
+      ? Math.round((new Date(selectedDate + 'T12:00:00') - new Date(activeDeloadStart + 'T12:00:00')) / 86400000) + 1
+      : null;
+
+    const daysRemaining = deloadDayNumber ? 7 - deloadDayNumber : null;
+
+    const deloadWeekLoad = (() => {
+      if (!activeDeloadStart) return 0;
+      return datesSorted
+        .filter(d => d >= activeDeloadStart && d <= selectedDate)
+        .reduce((sum, d) => {
+          const sessions = dailyData[d]?.sessions || [];
+          return sum + sessions.reduce((s2, sess) => {
+            if (sess.sessionType === 'Rest' || !sess.sessionDuration || !sess.sessionRPE) return s2;
+            return s2 + (Number(sess.sessionDuration) || 0) * (Number(sess.sessionRPE) || 0);
+          }, 0);
+        }, 0);
+    })();
+
+    const projectedWeekLoad = deloadDayNumber && deloadDayNumber > 0
+      ? Math.round((deloadWeekLoad / deloadDayNumber) * 7)
+      : 0;
+
+    const onTrack = projectedWeekLoad >= deloadTargetLow && projectedWeekLoad <= deloadTargetHigh;
+    const overTarget = projectedWeekLoad > deloadTargetHigh;
 
     return {
       weeksSinceDeload,
       isCurrentDeload,
-      deloadTargetLow: Math.round(chronicLoad * 0.5),
-      deloadTargetHigh: Math.round(chronicLoad * 0.6),
+      deloadTargetLow,
+      deloadTargetHigh,
       currentWeekKey,
+      currentWeekLoad: deloadWeekLoad,
+      deloadDayNumber,
+      daysRemaining,
+      projectedWeekLoad,
+      onTrack,
+      overTarget,
+      activeDeloadStart,
     };
   }, [dailyData, datesSorted, selectedDate, ewmaData, profile]);
   const shiftDate = (days) => { const d = new Date(selectedDate + "T12:00:00"); d.setDate(d.getDate() + days); setSelectedDate(d.toISOString().slice(0, 10)); };
@@ -1461,26 +1503,76 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
             <span className="text-slate-600 ml-2">(avg {restPattern.avgGap}d)</span>
           </div>
         )}
-        {deloadStatus.weeksSinceDeload !== null &&
+        {/* State 1: In active deload window — show progress tracker */}
+        {deloadStatus.isCurrentDeload && deloadStatus.deloadDayNumber && (
+          <div className="mt-2">
+            <div className="flex items-center justify-between text-[10px] mb-1">
+              <span className="text-violet-400 font-semibold">
+                Deload week · Day {deloadStatus.deloadDayNumber} of 7
+              </span>
+              <span className={deloadStatus.onTrack ? 'text-emerald-400' : deloadStatus.overTarget ? 'text-amber-400' : 'text-slate-400'}>
+                {deloadStatus.onTrack ? '✓ On track' : deloadStatus.overTarget ? 'Above target pace' : 'Below target — light day today'}
+              </span>
+            </div>
+            <div className="bg-slate-900/40 rounded-lg p-2.5 space-y-1.5">
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-400">So far this week</span>
+                <span className="font-mono font-bold text-slate-200">{deloadStatus.currentWeekLoad} AU</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-400">Week target</span>
+                <span className="font-mono text-slate-400">{deloadStatus.deloadTargetLow}–{deloadStatus.deloadTargetHigh} AU</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-400">Projected total</span>
+                <span className={`font-mono font-bold ${deloadStatus.onTrack ? 'text-emerald-400' : deloadStatus.overTarget ? 'text-amber-400' : 'text-slate-400'}`}>
+                  ~{deloadStatus.projectedWeekLoad} AU
+                </span>
+              </div>
+              {deloadStatus.daysRemaining !== null && (
+                <div className="text-[10px] text-slate-600">{deloadStatus.daysRemaining} day{deloadStatus.daysRemaining !== 1 ? 's' : ''} remaining</div>
+              )}
+            </div>
+          </div>
+        )}
+        {/* State 2: Not in deload, 4–6 weeks since last — soft suggestion */}
+        {!deloadStatus.isCurrentDeload &&
+          deloadStatus.weeksSinceDeload !== null &&
           deloadStatus.weeksSinceDeload >= 4 &&
-          !deloadStatus.isCurrentDeload && (
-          <div className={`mt-2 text-[10px] ${deloadStatus.weeksSinceDeload >= 7 ? "text-red-400" : "text-amber-400"}`}>
-            {deloadStatus.weeksSinceDeload} weeks since last deload
+          deloadStatus.weeksSinceDeload < 7 && (
+          <div className="mt-2 text-[10px] text-amber-400">
+            {deloadStatus.weeksSinceDeload} weeks since your last reduced week — if you're planning a deload soon, mark it below
             {deloadStatus.deloadTargetLow > 0 && (
-              <span className="text-slate-600"> · target {deloadStatus.deloadTargetLow}–{deloadStatus.deloadTargetHigh} AU this week</span>
+              <span className="text-slate-600"> · target {deloadStatus.deloadTargetLow}–{deloadStatus.deloadTargetHigh} AU</span>
             )}
           </div>
         )}
-        {deloadStatus.weeksSinceDeload !== null &&
-          deloadStatus.weeksSinceDeload >= 5 &&
-          !deloadStatus.isCurrentDeload && (
+        {/* State 3: 7+ weeks — stronger nudge */}
+        {!deloadStatus.isCurrentDeload &&
+          deloadStatus.weeksSinceDeload !== null &&
+          deloadStatus.weeksSinceDeload >= 7 && (
+          <div className="mt-2 text-[10px] text-red-400">
+            7+ weeks without a reduced week — worth considering a deload if your training cycle allows
+            {deloadStatus.deloadTargetLow > 0 && (
+              <span className="text-slate-600"> · target {deloadStatus.deloadTargetLow}–{deloadStatus.deloadTargetHigh} AU</span>
+            )}
+          </div>
+        )}
+        {/* Mark as deload button — show in states 2 and 3 only */}
+        {!deloadStatus.isCurrentDeload &&
+          deloadStatus.weeksSinceDeload !== null &&
+          deloadStatus.weeksSinceDeload >= 4 &&
+          daySessions.length > 0 &&
+          daySessions[0]?.sessionType !== 'Rest' && (
           <button
             onClick={() => {
               const weeks = profile?.deloadWeeks || [];
-              if (weeks.includes(selectedDate)) return;
-              setProfile(p => ({ ...p, deloadWeeks: [...weeks, selectedDate] }));
+              const updated = weeks.includes(selectedDate)
+                ? weeks.filter(w => w !== selectedDate)
+                : [...weeks, selectedDate];
+              setProfile(p => ({ ...p, deloadWeeks: updated }));
             }}
-            className="mt-1 text-[10px] text-sky-400 hover:text-sky-300">
+            className="mt-1 text-[10px] text-sky-400 hover:text-sky-300 font-semibold">
             Mark this week as deload →
           </button>
         )}
