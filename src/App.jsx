@@ -1099,6 +1099,12 @@ export default function ClimbingTracker() {
         }, 0);
     })();
 
+    console.log('[Deload debug] activeDeloadStart:', activeDeloadStart);
+    console.log('[Deload debug] selectedDate:', selectedDate);
+    console.log('[Deload debug] dates in range:', datesSorted.filter(d => activeDeloadStart && d >= activeDeloadStart && d <= selectedDate));
+    console.log('[Deload debug] currentWeekLoad:', deloadWeekLoad);
+    console.log('[Deload debug] deloadDayNumber:', deloadDayNumber);
+
     const projectedWeekLoad = deloadDayNumber && deloadDayNumber > 0
       ? Math.round((deloadWeekLoad / deloadDayNumber) * 7)
       : 0;
