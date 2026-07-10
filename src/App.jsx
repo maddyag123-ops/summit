@@ -1128,6 +1128,14 @@ export default function ClimbingTracker() {
     const onTrack = projectedWeekLoad >= deloadTargetLow && projectedWeekLoad <= deloadTargetHigh;
     const overTarget = projectedWeekLoad > deloadTargetHigh;
 
+    const chronicLoad = ewmaData[selectedDate]?.chronic || 0;
+    const ratio = ewmaData[selectedDate]?.ratio || 0;
+    const deloadLabel = ratio < 0.6 ? 'Full deload'
+      : ratio < 0.8 ? 'Moderate deload'
+      : ratio <= 1.0 ? 'Light week'
+      : null;
+    const ratioNotReducedYet = ratio > 1.0;
+
     return {
       weeksSinceDeload,
       isCurrentDeload,
@@ -1141,8 +1149,13 @@ export default function ClimbingTracker() {
       onTrack,
       overTarget,
       activeDeloadStart,
+      chronicLoad,
+      ratio,
+      deloadLabel,
+      ratioNotReducedYet,
+      last4WeeksAvg: Math.round(last4WeeksLoad),
     };
-  }, [dailyData, datesSorted, selectedDate, profile]);
+  }, [dailyData, datesSorted, selectedDate, ewmaData, profile]);
   const shiftDate = (days) => { const d = new Date(selectedDate + "T12:00:00"); d.setDate(d.getDate() + days); setSelectedDate(d.toISOString().slice(0, 10)); };
 
   const showStatus = (type, msg) => {
@@ -1525,34 +1538,84 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
             <span className="text-slate-600 ml-2">(avg {restPattern.avgGap}d)</span>
           </div>
         )}
-        {/* State 1: In active deload window — show progress tracker */}
-        {deloadStatus.isCurrentDeload && deloadStatus.deloadDayNumber && (
+        {/* State 1a: Day 1 of deload — orientation card */}
+        {deloadStatus.isCurrentDeload && deloadStatus.deloadDayNumber === 1 && (
           <div className="mt-2">
-            <div className="flex items-center justify-between text-[10px] mb-1">
+            <div className="text-[10px] text-violet-400 font-semibold mb-2">Deload week started · Day 1 of 7</div>
+            <div className="bg-slate-900/40 rounded-lg p-3 space-y-2">
+              <div className="text-[10px] text-slate-400 font-semibold mb-1">What to aim for this week:</div>
+              {/* AU estimates are approximate — ratio is the primary signal */}
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-400">Full deload</span>
+                <span className="text-slate-300">ratio &lt; 0.6 · ~{Math.round(deloadStatus.chronicLoad * 0.6 * 7)} AU or less</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-400">Moderate deload</span>
+                <span className="text-slate-300">ratio 0.6–0.8 · ~{Math.round(deloadStatus.chronicLoad * 0.6 * 7)}–{Math.round(deloadStatus.chronicLoad * 0.8 * 7)} AU</span>
+              </div>
+              <div className="pt-1.5 border-t border-slate-700/30 space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-500">Your recent weekly average</span>
+                  <span className="text-slate-400 font-mono">~{deloadStatus.last4WeeksAvg} AU</span>
+                </div>
+                <div className="text-[10px] text-slate-600 mt-1">Ratio will drop gradually as the week progresses. Expect to see it fall from day 3 onwards.</div>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* State 1b: Days 2–7 of deload — progress tracker */}
+        {deloadStatus.isCurrentDeload && deloadStatus.deloadDayNumber > 1 && (
+          <div className="mt-2">
+            <div className="flex items-center justify-between text-[10px] mb-1.5">
               <span className="text-violet-400 font-semibold">
                 Deload week · Day {deloadStatus.deloadDayNumber} of 7
               </span>
-              <span className={deloadStatus.onTrack ? 'text-emerald-400' : deloadStatus.overTarget ? 'text-amber-400' : 'text-slate-400'}>
-                {deloadStatus.onTrack ? '✓ On track' : deloadStatus.overTarget ? 'Above target pace' : 'Below target — light day today'}
+              <span className={
+                deloadStatus.deloadDayNumber === 7 ? 'text-emerald-400' :
+                deloadStatus.ratioNotReducedYet ? 'text-slate-500' :
+                deloadStatus.onTrack ? 'text-emerald-400' :
+                deloadStatus.overTarget ? 'text-amber-400' :
+                'text-slate-400'
+              }>
+                {deloadStatus.deloadDayNumber === 7 ? 'Deload week complete' :
+                 deloadStatus.ratioNotReducedYet ? 'Load not reduced yet this week' :
+                 deloadStatus.onTrack ? 'On track' :
+                 deloadStatus.overTarget ? 'Above target pace' :
+                 'Below target — light day today'}
               </span>
             </div>
             <div className="bg-slate-900/40 rounded-lg p-2.5 space-y-1.5">
               <div className="flex justify-between text-xs">
-                <span className="text-slate-400">So far this week</span>
-                <span className="font-mono font-bold text-slate-200">{deloadStatus.currentWeekLoad} AU</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-slate-400">Week target</span>
-                <span className="font-mono text-slate-400">{deloadStatus.deloadTargetLow}–{deloadStatus.deloadTargetHigh} AU</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-slate-400">Projected total</span>
-                <span className={`font-mono font-bold ${deloadStatus.onTrack ? 'text-emerald-400' : deloadStatus.overTarget ? 'text-amber-400' : 'text-slate-400'}`}>
-                  ~{deloadStatus.projectedWeekLoad} AU
+                <span className="text-slate-400">Current ratio</span>
+                <span className={`font-mono font-bold ${
+                  deloadStatus.ratio < 0.6 ? 'text-emerald-400' :
+                  deloadStatus.ratio < 0.8 ? 'text-sky-400' :
+                  deloadStatus.ratio <= 1.0 ? 'text-amber-400' :
+                  'text-red-400'
+                }`}>
+                  {deloadStatus.ratio}
+                  {deloadStatus.deloadLabel && (
+                    <span className="text-slate-500 font-normal ml-1.5">({deloadStatus.deloadLabel})</span>
+                  )}
                 </span>
               </div>
-              {deloadStatus.daysRemaining !== null && (
-                <div className="text-[10px] text-slate-600">{deloadStatus.daysRemaining} day{deloadStatus.daysRemaining !== 1 ? 's' : ''} remaining</div>
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-400">Weekly load so far</span>
+                <span className="font-mono text-slate-300">{deloadStatus.currentWeekLoad} AU</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-400">Recent weekly average</span>
+                <span className="font-mono text-slate-500">~{deloadStatus.last4WeeksAvg} AU</span>
+              </div>
+              {deloadStatus.daysRemaining > 0 && (
+                <div className="text-[10px] text-slate-600">
+                  {deloadStatus.daysRemaining} day{deloadStatus.daysRemaining !== 1 ? 's' : ''} remaining
+                </div>
+              )}
+              {deloadStatus.ratioNotReducedYet && (
+                <div className="text-[10px] text-slate-500 mt-1">
+                  Ratio will drop gradually as load reduces. Expect to see it fall from day 3 onwards.
+                </div>
               )}
             </div>
           </div>
