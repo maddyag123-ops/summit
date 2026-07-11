@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, Cell, ComposedChart, Area } from "recharts";
-import { Activity, ChevronLeft, ChevronRight, Plus, Trash2, TrendingUp, AlertTriangle, CheckCircle, MinusCircle, Heart, BarChart3, Mountain, Settings, X, ChevronDown, ChevronUp, Check, Download, Upload, Loader, Users } from "lucide-react";
+import { Activity, ChevronLeft, ChevronRight, Plus, Trash2, TrendingUp, AlertTriangle, CheckCircle, MinusCircle, Heart, BarChart3, Mountain, Settings, X, ChevronDown, ChevronUp, Check, Download, Upload, Loader, Users, Calendar } from "lucide-react";
 import { supabase } from './supabase';
 
 // ─── Supabase Storage Layer ───
@@ -1194,8 +1194,8 @@ export default function ClimbingTracker() {
     { id: "today", label: "Today", icon: Activity },
     { id: "climbs", label: "Climbs", icon: Mountain },
     { id: "assess", label: "Assess", icon: TrendingUp },
-    { id: "injury", label: "Injury", icon: Heart },
     { id: "dashboard", label: "Dash", icon: BarChart3 },
+    { id: "plan", label: "Plan", icon: Calendar },
     { id: "coach", label: "Coach", icon: Users },
   ];
 
@@ -1291,9 +1291,11 @@ export default function ClimbingTracker() {
       <main className="max-w-2xl mx-auto px-4 py-4 pb-24">
         {tab === "today" && <TodayView {...{ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, restPattern, loadTrajectory, deloadStatus, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData, morningMarker30DayAvg }} />}
         {tab === "climbs" && <ClimbView {...{ selectedDate, shiftDate, climbData, setClimbData, settings, dailyData, setDailyData, profile, datesSorted }} />}
-        {tab === "assess" && <AssessView {...{ assessData, setAssessData, settings }} />}
-        {tab === "injury" && <InjuryView {...{ injuryData, setInjuryData, dailyData, ewmaData, datesSorted }} />}
+        {tab === "assess" && <AssessView {...{ assessData, setAssessData, settings, injuryData, setInjuryData, dailyData, ewmaData, datesSorted }} />}
         {tab === "dashboard" && <DashboardView {...{ dailyData, ewmaData, fingerEWMAData, weekOnOffSplit, datesSorted, assessData, climbData }} />}
+        {tab === "plan" && (
+          <div className="flex items-center justify-center h-40 text-slate-600 text-sm">Block system coming soon</div>
+        )}
         {tab === "coach" && <CoachView {...{ coachUsers, currentUser: displayName, loadUserData, coachViewUser, setCoachViewUser, coachData, setCoachData }} />}
       </main>
       <nav className="fixed bottom-0 left-0 right-0 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800/50 z-50">
@@ -2491,7 +2493,9 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
 }
 
 // ─── ASSESS VIEW ───
-function AssessView({ assessData, setAssessData, settings }) {
+function AssessView({ assessData, setAssessData, settings, injuryData, setInjuryData, dailyData, ewmaData, datesSorted }) {
+  const [assessSection, setAssessSection] = useState('assessments');
+  const [openNewInjury, setOpenNewInjury] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ ...emptyAssess(), date: todayStr() });
   const unit = settings.unit || "lbs";
@@ -2500,7 +2504,34 @@ function AssessView({ assessData, setAssessData, settings }) {
   const d = (c, p, f) => (!p || !c[f] || !p[f]) ? null : Math.round((Number(c[f]) - Number(p[f])) * 10) / 10;
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between"><h2 className="text-lg font-bold">Progress Assessments</h2><button onClick={startNew} className="px-3 py-1.5 bg-sky-500/20 text-sky-400 rounded-lg text-xs font-semibold hover:bg-sky-500/30 flex items-center gap-1.5"><Plus size={14} /> New Test</button></div>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-bold text-slate-100">Assess</h2>
+        <div className="flex gap-2">
+          <button
+            onClick={() => { setAssessSection('assessments'); startNew(); }}
+            className="px-3 py-1.5 bg-sky-500/20 text-sky-400 border border-sky-500/30 rounded-lg text-xs font-semibold hover:bg-sky-500/30 transition-all">
+            + Assessment
+          </button>
+          <button
+            onClick={() => { setAssessSection('injury'); setOpenNewInjury(true); }}
+            className="px-3 py-1.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg text-xs font-semibold hover:bg-red-500/30 transition-all">
+            + Injury
+          </button>
+        </div>
+      </div>
+      <div className="flex gap-1 bg-slate-900/50 rounded-xl p-1 mb-4">
+        {[{ key: 'assessments', label: 'Assessments' }, { key: 'injury', label: 'Injury Tracker' }].map(tab => (
+          <button key={tab.key} onClick={() => setAssessSection(tab.key)}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${assessSection === tab.key ? 'bg-slate-700 text-slate-100' : 'text-slate-500 hover:text-slate-300'}`}>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      {assessSection === 'injury' && (
+        <InjuryView {...{ injuryData, setInjuryData, dailyData, ewmaData, datesSorted }}
+          openNew={openNewInjury} onOpenNewHandled={() => setOpenNewInjury(false)} />
+      )}
+      {assessSection === 'assessments' && <>
       {editing !== null && <Card>
         <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-4">{editing === "new" ? "New Assessment" : "Edit Assessment"}</div>
         <div className="space-y-3">
@@ -2540,16 +2571,21 @@ function AssessView({ assessData, setAssessData, settings }) {
         </Card>;
       })}
       {assessData.length === 0 && <div className="text-center text-slate-600 py-8 text-sm">No assessments yet.</div>}
+      </>}
     </div>
   );
 }
 
 // ─── INJURY VIEW ───
-function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorted }) {
+function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorted, openNew, onOpenNewHandled }) {
   const [form, setForm] = useState({ ...emptyInjury(), date: todayStr() });
   const [editing, setEditing] = useState(null); // null = new entry, number = editing index
   const [view, setView] = useState("log");
   const [chartAxis, setChartAxis] = useState("load"); // "load" or "rpe"
+
+  useEffect(() => {
+    if (openNew) { setForm({ ...emptyInjury(), date: todayStr() }); setEditing(null); setView("log"); if (onOpenNewHandled) onOpenNewHandled(); }
+  }, [openNew]);
 
   const saveNew = () => { setInjuryData(p => [...p, form]); setForm({ ...emptyInjury(), date: todayStr(), condition: form.condition }); setEditing(null); };
   const saveEdit = () => { if (editing !== null) setInjuryData(p => p.map((x, i) => i === editing ? form : x)); setForm({ ...emptyInjury(), date: todayStr() }); setEditing(null); };
