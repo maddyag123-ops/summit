@@ -126,7 +126,7 @@ const emptyDay = () => ({ sleepQuality: "", sleepDuration: "", soreness: "", fin
 const emptySession = () => ({ sessionType: "", sessionDuration: "", sessionRPE: "", notes: "", outdoor: false });
 const emptyClimb = () => ({ route: "", type: "", gradeSport: "", gradeBoulder: "", styles: [], sendType: "", wallAngle: "", rpe: "", attempts: "", moves: "", sent: false, isProject: false, instrument: "Tindeq", tindeqGripType: "Half Crimp", tindeqIntensity: "Try Hard", postHC50L: "", postHC50R: "", postHCTHL: "", postHCTHR: "", postOH50L: "", postOH50R: "", postOHTHL: "", postOHTHR: "", postRFDL: "", postRFDR: "", postGripL: "", postGripR: "", notes: "" });
 const emptyAssess = () => ({ date: "", bodyweight: "", maxHang: "", weightedPullup: "", tindeqGripType: "Half Crimp", tindeqIntensity: "Try Hard", tindeqHC50L: "", tindeqHC50R: "", tindeqHCTHL: "", tindeqHCTHR: "", tindeqOH50L: "", tindeqOH50R: "", tindeqOHTHL: "", tindeqOHTHR: "", tindeqRFDL: "", tindeqRFDR: "", criticalForce: "", gripL: "", gripR: "", shoulderRatio: "", notes: "" });
-const emptyInjury = () => ({ date: "", condition: "", lThumb: 0, lIndex: 0, lMiddle: 0, lRing: 0, lPinky: 0, rThumb: 0, rIndex: 0, rMiddle: 0, rRing: 0, rPinky: 0, elbowL: 0, elbowR: 0, shoulderL: 0, shoulderR: 0, details: "", notes: "" });
+const emptyInjury = () => ({ date: "", condition: "", lThumb: 0, lIndex: 0, lMiddle: 0, lRing: 0, lPinky: 0, rThumb: 0, rIndex: 0, rMiddle: 0, rRing: 0, rPinky: 0, elbowL: 0, elbowR: 0, shoulderL: 0, shoulderR: 0, legL: 0, legR: 0, details: "", notes: "" });
 
 // ─── Constants ───
 const SPORT_GRADES = ["5.6", "5.7", "5.8", "5.9", "5.10a", "5.10b", "5.10c", "5.10d", "5.11a", "5.11b", "5.11c", "5.11d", "5.12a", "5.12b", "5.12c", "5.12d", "5.13a", "5.13b", "5.13c", "5.13d", "5.14a", "5.14b", "5.14c", "5.14d", "5.15a", "5.15b", "5.15c"];
@@ -2494,7 +2494,7 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
 
 // ─── ASSESS VIEW ───
 function AssessView({ assessData, setAssessData, settings, injuryData, setInjuryData, dailyData, ewmaData, datesSorted }) {
-  const [assessSection, setAssessSection] = useState('assessments');
+  const [assessSection, setAssessSection] = useState('injury');
   const [openNewInjury, setOpenNewInjury] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ ...emptyAssess(), date: todayStr() });
@@ -2520,7 +2520,7 @@ function AssessView({ assessData, setAssessData, settings, injuryData, setInjury
         </div>
       </div>
       <div className="flex gap-1 bg-slate-900/50 rounded-xl p-1 mb-4">
-        {[{ key: 'assessments', label: 'Assessments' }, { key: 'injury', label: 'Injury Tracker' }].map(tab => (
+        {[{ key: 'injury', label: 'Injury Tracker' }, { key: 'assessments', label: 'Assessments' }].map(tab => (
           <button key={tab.key} onClick={() => setAssessSection(tab.key)}
             className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${assessSection === tab.key ? 'bg-slate-700 text-slate-100' : 'text-slate-500 hover:text-slate-300'}`}>
             {tab.label}
@@ -2582,9 +2582,10 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
   const [editing, setEditing] = useState(null); // null = new entry, number = editing index
   const [view, setView] = useState("log");
   const [chartAxis, setChartAxis] = useState("load"); // "load" or "rpe"
+  const [isNewCondition, setIsNewCondition] = useState(false);
 
   useEffect(() => {
-    if (openNew) { setForm({ ...emptyInjury(), date: todayStr() }); setEditing(null); setView("log"); if (onOpenNewHandled) onOpenNewHandled(); }
+    if (openNew) { setForm({ ...emptyInjury(), date: todayStr() }); setEditing(null); setView("log"); setIsNewCondition(false); if (onOpenNewHandled) onOpenNewHandled(); }
   }, [openNew]);
 
   const saveNew = () => { setInjuryData(p => [...p, form]); setForm({ ...emptyInjury(), date: todayStr(), condition: form.condition }); setEditing(null); };
@@ -2595,8 +2596,9 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
   if (Math.max(form.lThumb, form.lIndex, form.lMiddle, form.lRing, form.lPinky, form.rThumb, form.rIndex, form.rMiddle, form.rRing, form.rPinky) >= 3) flags.push("Finger ≥3");
   if (Math.max(form.elbowL, form.elbowR) >= 3) flags.push("Elbow ≥3");
   if (Math.max(form.shoulderL, form.shoulderR) >= 3) flags.push("Shoulder ≥3");
+  if (Math.max(form.legL || 0, form.legR || 0) >= 3) flags.push("Leg ≥3");
 
-  const maxPainOfEntry = (e) => Math.max(e.lThumb || 0, e.lIndex || 0, e.lMiddle || 0, e.lRing || 0, e.lPinky || 0, e.rThumb || 0, e.rIndex || 0, e.rMiddle || 0, e.rRing || 0, e.rPinky || 0, e.elbowL || 0, e.elbowR || 0, e.shoulderL || 0, e.shoulderR || 0);
+  const maxPainOfEntry = (e) => Math.max(e.lThumb || 0, e.lIndex || 0, e.lMiddle || 0, e.lRing || 0, e.lPinky || 0, e.rThumb || 0, e.rIndex || 0, e.rMiddle || 0, e.rRing || 0, e.rPinky || 0, e.elbowL || 0, e.elbowR || 0, e.shoulderL || 0, e.shoulderR || 0, e.legL || 0, e.legR || 0);
 
   // Existing condition names for dropdown
   const existingConditions = useMemo(() => {
@@ -2639,6 +2641,7 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
     setForm({ ...emptyInjury(), date: todayStr(), condition: condName });
     setEditing(null);
     setView("log");
+    setIsNewCondition(false);
   };
 
   return (
@@ -2658,9 +2661,18 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
             <div className="flex flex-col gap-1">
               <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Condition</label>
               {existingConditions.length > 0 ? (
-                <select value={form.condition} onChange={e => setForm(p => ({ ...p, condition: e.target.value === "__new__" ? "" : e.target.value }))}
+                <select value={isNewCondition ? "__new__" : form.condition}
+                  onChange={e => {
+                    if (e.target.value === "__new__") {
+                      setIsNewCondition(true);
+                      setForm(p => ({ ...p, condition: "" }));
+                    } else {
+                      setIsNewCondition(false);
+                      setForm(p => ({ ...p, condition: e.target.value }));
+                    }
+                  }}
                   className="bg-slate-900/60 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 appearance-none transition-all">
-                  <option value="">+ New condition</option>
+                  <option value="__new__">+ New condition</option>
                   {existingConditions.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               ) : (
@@ -2668,7 +2680,7 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
               )}
             </div>
           </div>
-          {form.condition === "" && existingConditions.length > 0 && (
+          {isNewCondition && existingConditions.length > 0 && (
             <Input label="New Condition Name" value={form.condition} onChange={v => setForm(p => ({ ...p, condition: v }))} placeholder="e.g., Left A2 pulley" className="mb-3" />
           )}
           <p className="text-[10px] text-slate-600 mb-4">Same name = tracked together over time</p>
@@ -2682,6 +2694,11 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
             <PainSlider label="Elbow R" value={form.elbowR} onChange={v => setForm(p => ({ ...p, elbowR: v }))} />
             <PainSlider label="Shoulder L" value={form.shoulderL} onChange={v => setForm(p => ({ ...p, shoulderL: v }))} />
             <PainSlider label="Shoulder R" value={form.shoulderR} onChange={v => setForm(p => ({ ...p, shoulderR: v }))} />
+          </div>
+          <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">Leg</div>
+          <div className="space-y-1.5 mb-4">
+            <PainSlider label="Leg L" value={form.legL} onChange={v => setForm(p => ({ ...p, legL: v }))} />
+            <PainSlider label="Leg R" value={form.legR} onChange={v => setForm(p => ({ ...p, legR: v }))} />
           </div>
           {flags.length > 0 && <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 mb-3 flex items-center gap-2"><AlertTriangle size={16} className="text-red-400 shrink-0" /><span className="text-xs text-red-400 font-medium">{flags.join(" • ")}</span></div>}
           <Input label="Location Details" value={form.details} onChange={v => setForm(p => ({ ...p, details: v }))} placeholder="e.g., A2 pulley left ring" className="mb-3" />
