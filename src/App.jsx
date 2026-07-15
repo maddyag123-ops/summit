@@ -36,7 +36,7 @@ async function getAllUsers() {
 
 const emptyProfile = () => ({
   bodyweight: "", height: "", sex: "", dob: "", dominantHand: "",
-  climbingYears: "", trainingYears: "", discipline: [], indoorOutdoorSplit: 50,
+  climbingYears: "", trainingYears: "", discipline: [], disciplinePct: {}, indoorOutdoorSplit: 50,
   onsightGradeSport: "", flashGradeBoulder: "", completed: false,
   nudgeState: {},
   deloadWeeks: [],
@@ -219,7 +219,11 @@ const SleepSlider = ({ value, onChange }) => {
       <input type="range" min={0} max={12} step={0.25} value={hrs} onChange={e => onChange(e.target.value)}
         className="w-full h-2 rounded-full appearance-none cursor-pointer"
         style={{ background: `linear-gradient(to right, ${hrs === 0 ? '#334155' : hrs < 5 ? '#ef4444' : hrs < 6.5 ? '#eab308' : hrs < 8 ? '#38bdf8' : '#22c55e'} ${hrs / 12 * 100}%, #334155 ${hrs / 12 * 100}%)` }} />
-      <div className="flex justify-between text-[9px] text-slate-600 px-0.5"><span>0h</span><span>4h</span><span>6h</span><span>8h</span><span>10h</span><span>12h</span></div>
+      <div className="relative text-[9px] text-slate-600 h-3">
+        {[[0,'0h'],[4,'4h'],[6,'6h'],[8,'8h'],[10,'10h'],[12,'12h']].map(([v,l]) => (
+          <span key={v} className="absolute" style={{ left: `${v/12*100}%`, transform: 'translateX(-50%)' }}>{l}</span>
+        ))}
+      </div>
     </div>
   );
 };
@@ -363,10 +367,29 @@ function ProfileSetupScreen({ profile, setProfile, settings, userId, onClose }) 
           <div className="flex flex-wrap gap-1.5">
             {["Bouldering", "Sport", "Trad", "Speed"].map(opt => {
               const active = (form.discipline || []).includes(opt);
-              return <button key={opt} onClick={() => set("discipline", active ? form.discipline.filter(x => x !== opt) : [...(form.discipline || []), opt])}
-                className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border transition-all ${active ? "bg-sky-500/25 text-sky-300 border-sky-500/40" : "bg-slate-800/60 text-slate-500 border-slate-700/40 hover:border-slate-600"}`}>{opt}</button>;
+              return <button key={opt} onClick={() => {
+                const newDisc = active ? form.discipline.filter(x => x !== opt) : [...(form.discipline || []), opt];
+                const newPct = { ...(form.disciplinePct || {}) };
+                if (active) delete newPct[opt];
+                setForm(p => ({ ...p, discipline: newDisc, disciplinePct: newPct }));
+              }} className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border transition-all ${active ? "bg-sky-500/25 text-sky-300 border-sky-500/40" : "bg-slate-800/60 text-slate-500 border-slate-700/40 hover:border-slate-600"}`}>{opt}</button>;
             })}
           </div>
+          {(form.discipline || []).length >= 2 && (
+            <div className="mt-2 space-y-1.5">
+              <p className="text-[10px] text-slate-600">Approximate percentage of training time</p>
+              {(form.discipline || []).map(disc => (
+                <div key={disc} className="flex items-center gap-2">
+                  <span className="text-[10px] text-slate-400 w-20 shrink-0">{disc}</span>
+                  <input type="number" min="0" max="100"
+                    value={(form.disciplinePct || {})[disc] ?? ""}
+                    onChange={e => setForm(p => ({ ...p, disciplinePct: { ...(p.disciplinePct || {}), [disc]: Math.min(100, Math.max(0, Number(e.target.value))) } }))}
+                    className="w-16 bg-slate-900/60 border border-slate-600/50 rounded-lg px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-sky-500/50 appearance-none" placeholder="%" />
+                  <span className="text-[10px] text-slate-600">%</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div>
           <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">Typical Training Split</label>
@@ -1725,7 +1748,7 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
               </div>
               {sess.sessionType !== "Rest" && <div className="flex gap-2 items-end">
                 <Input label="Min" value={sess.sessionDuration} onChange={v => quickUpdateSession(idx, "sessionDuration", v)} type="number" step="10" className="flex-1" />
-                <Input label="RPE" value={sess.sessionRPE} onChange={v => quickUpdateSession(idx, "sessionRPE", v)} type="number" min="1" max="10" className="flex-1" />
+                <Input label="RPE" value={sess.sessionRPE} onChange={v => quickUpdateSession(idx, "sessionRPE", String(Math.min(10, Math.max(1, Number(v)))))} type="number" min="1" max="10" className="flex-1" />
                 {OUTDOOR_SESSION_TYPES.has(sess.sessionType) && <div className="flex flex-col gap-1 pb-0.5">
                   <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Outdoor</label>
                   <button onClick={() => quickUpdateSession(idx, "outdoor", !sess.outdoor)}
@@ -2253,7 +2276,7 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
             {/* Attempts + RPE */}
             <div className="grid grid-cols-2 gap-2 mb-3">
               <Input label="Attempts" value={climb.attempts} onChange={v => updateClimb(idx, 'attempts', v)} type="number" min="1" />
-              <Input label="RPE (1-10)" value={climb.rpe} onChange={v => updateClimb(idx, 'rpe', v)} type="number" min="1" max="10" />
+              <Input label="RPE (1-10)" value={climb.rpe} onChange={v => updateClimb(idx, 'rpe', String(Math.min(10, Math.max(1, Number(v)))))} type="number" min="1" max="10" />
             </div>
 
             {/* Sent + Project toggles */}
