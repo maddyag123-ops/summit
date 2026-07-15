@@ -221,8 +221,11 @@ const SleepSlider = ({ value, onChange }) => {
         className="w-full h-2 rounded-full appearance-none cursor-pointer accent-sky-400"
         style={{ background: `linear-gradient(to right, ${hrs === 0 ? '#334155' : hrs < 5 ? '#ef4444' : hrs < 6.5 ? '#eab308' : hrs < 8 ? '#38bdf8' : '#22c55e'} ${hrs / 12 * 100}%, #334155 ${hrs / 12 * 100}%)` }} />
       <datalist id="sleep-ticks">
-        {[0,2,4,6,7,8,9,10,11,12].map(v => <option key={v} value={v} label={`${v}h`} />)}
+        {[0,2,4,6,7,8,9,10,11,12].map(v => <option key={v} value={v} />)}
       </datalist>
+      <div className="flex justify-between text-[10px] text-slate-500 mt-1">
+        <span>0h</span><span>4h</span><span>6h</span><span>8h</span><span>10h</span><span>12h</span>
+      </div>
     </div>
   );
 };
@@ -283,7 +286,6 @@ function ProfileSetupScreen({ profile, setProfile, settings, userId, onClose }) 
     disciplinePct: p.disciplinePct || {},
   });
   const [form, setForm] = useState(() => initForm(profile));
-  console.log('form.discipline on render:', JSON.stringify(form.discipline));
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const unit = settings?.unit || "lbs";
 
