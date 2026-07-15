@@ -216,16 +216,13 @@ const SleepSlider = ({ value, onChange }) => {
           <span className={`text-[10px] font-bold font-mono px-1.5 py-0.5 rounded ${score <= 3 ? "bg-red-500/20 text-red-400" : score <= 5 ? "bg-amber-500/20 text-amber-400" : score <= 7 ? "bg-sky-500/20 text-sky-400" : "bg-emerald-500/20 text-emerald-400"}`}>{score > 0 ? `${score}/10` : "—"}</span>
         </div>
       </div>
-      <input type="range" min={0} max={12} step={0.25} value={hrs} onChange={e => onChange(e.target.value)}
-        className="w-full h-2 rounded-full appearance-none cursor-pointer"
+      <input type="range" min={0} max={12} step={0.5} value={hrs} onChange={e => onChange(e.target.value)}
+        list="sleep-ticks"
+        className="w-full h-2 rounded-full appearance-none cursor-pointer accent-sky-400"
         style={{ background: `linear-gradient(to right, ${hrs === 0 ? '#334155' : hrs < 5 ? '#ef4444' : hrs < 6.5 ? '#eab308' : hrs < 8 ? '#38bdf8' : '#22c55e'} ${hrs / 12 * 100}%, #334155 ${hrs / 12 * 100}%)` }} />
-      <div className="relative text-[9px] text-slate-600 h-3 px-[7px]">
-        {[[0,'0h'],[4,'4h'],[6,'6h'],[8,'8h'],[10,'10h'],[12,'12h']].map(([v,l]) => {
-          const pct = v / 12 * 100;
-          const style = pct === 0 ? { left: 0 } : pct === 100 ? { right: 0 } : { left: `${pct}%`, transform: 'translateX(-50%)' };
-          return <span key={v} className="absolute" style={style}>{l}</span>;
-        })}
-      </div>
+      <datalist id="sleep-ticks">
+        {[0,2,4,6,7,8,9,10,11,12].map(v => <option key={v} value={v} label={`${v}h`} />)}
+      </datalist>
     </div>
   );
 };
@@ -381,7 +378,6 @@ function ProfileSetupScreen({ profile, setProfile, settings, userId, onClose }) 
               }} className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border transition-all ${active ? "bg-sky-500/25 text-sky-300 border-sky-500/40" : "bg-slate-800/60 text-slate-500 border-slate-700/40 hover:border-slate-600"}`}>{opt}</button>;
             })}
           </div>
-          {console.log('form.discipline:', JSON.stringify(form.discipline), 'length:', (form.discipline || []).length)}
           {(form.discipline || []).length >= 2 && (
             <div className="mt-2 space-y-1.5">
               <p className="text-[10px] text-slate-600">Approximate percentage of training time</p>
