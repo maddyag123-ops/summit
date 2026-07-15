@@ -223,8 +223,12 @@ const SleepSlider = ({ value, onChange }) => {
       <datalist id="sleep-ticks">
         {[0,2,4,6,7,8,9,10,11,12].map(v => <option key={v} value={v} />)}
       </datalist>
-      <div className="flex justify-between text-[10px] text-slate-500 mt-1">
-        <span>0h</span><span>4h</span><span>6h</span><span>8h</span><span>10h</span><span>12h</span>
+      <div className="relative h-4 mt-1">
+        {[[0,'0h'],[4,'4h'],[6,'6h'],[8,'8h'],[10,'10h'],[12,'12h']].map(([v, label]) => {
+          const pct = (v / 12) * 100;
+          const style = pct === 0 ? { left: 0 } : pct === 100 ? { right: 0 } : { left: `${pct}%`, transform: 'translateX(-50%)' };
+          return <span key={v} className="absolute text-[10px] text-slate-500" style={style}>{label}</span>;
+        })}
       </div>
     </div>
   );
