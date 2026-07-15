@@ -208,27 +208,18 @@ const WellnessRow = ({ label, value, onChange, lowLabel = "", highLabel = "" }) 
 const SleepSlider = ({ value, onChange }) => {
   const hrs = Number(value) || 0; const score = hoursToScore(hrs);
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       <div className="flex items-center justify-between">
-        <span className="text-sm text-slate-300">Sleep Duration</span>
+        <span className="text-[10px] text-slate-500 uppercase tracking-wider">Sleep Duration</span>
         <div className="flex items-center gap-2">
           <span className="text-sm font-bold font-mono text-slate-200">{hrs > 0 ? `${hrs}h` : "—"}</span>
           <span className={`text-[10px] font-bold font-mono px-1.5 py-0.5 rounded ${score <= 3 ? "bg-red-500/20 text-red-400" : score <= 5 ? "bg-amber-500/20 text-amber-400" : score <= 7 ? "bg-sky-500/20 text-sky-400" : "bg-emerald-500/20 text-emerald-400"}`}>{score > 0 ? `${score}/10` : "—"}</span>
         </div>
       </div>
       <input type="range" min={0} max={12} step={0.5} value={hrs} onChange={e => onChange(e.target.value)}
-        list="sleep-ticks"
-        className="w-full h-2 rounded-full appearance-none cursor-pointer accent-sky-400"
-        style={{ background: `linear-gradient(to right, ${hrs === 0 ? '#334155' : hrs < 5 ? '#ef4444' : hrs < 6.5 ? '#eab308' : hrs < 8 ? '#38bdf8' : '#22c55e'} ${hrs / 12 * 100}%, #334155 ${hrs / 12 * 100}%)` }} />
-      <datalist id="sleep-ticks">
-        {[0,2,4,6,7,8,9,10,11,12].map(v => <option key={v} value={v} />)}
-      </datalist>
-      <div className="relative h-4 mt-1">
-        {[[0,'0h'],[4,'4h'],[6,'6h'],[8,'8h'],[10,'10h'],[12,'12h']].map(([v, label]) => {
-          const pct = (v / 12) * 100;
-          const style = pct === 0 ? { left: 0 } : pct === 100 ? { right: 0 } : { left: `${pct}%`, transform: 'translateX(-50%)' };
-          return <span key={v} className="absolute text-[10px] text-slate-500" style={style}>{label}</span>;
-        })}
+        className="w-full accent-sky-400 cursor-pointer" />
+      <div className="flex justify-between text-[10px] text-slate-600 mt-0.5">
+        <span>0h</span><span>12h</span>
       </div>
     </div>
   );
@@ -1341,7 +1332,6 @@ export default function ClimbingTracker() {
           {navTabs.map(t => <button key={t.id} onClick={() => setTab(t.id)} className={`flex-1 py-2.5 flex flex-col items-center gap-0.5 transition-colors ${tab === t.id ? "text-sky-400" : "text-slate-600 hover:text-slate-400"}`}><t.icon size={20} strokeWidth={tab === t.id ? 2.5 : 1.5} /><span className="text-[10px] font-medium">{t.label}</span></button>)}
         </div>
       </nav>
-      {console.log('[EditProfile] showProfileEdit:', showProfileEdit)}
       {showProfileEdit && <ProfileSetupScreen profile={profile} setProfile={setProfile} settings={settings} userId={userId} onClose={() => setShowProfileEdit(false)} />}
     </div>
   );
