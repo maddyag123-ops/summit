@@ -1337,6 +1337,7 @@ export default function ClimbingTracker() {
           {navTabs.map(t => <button key={t.id} onClick={() => setTab(t.id)} className={`flex-1 py-2.5 flex flex-col items-center gap-0.5 transition-colors ${tab === t.id ? "text-sky-400" : "text-slate-600 hover:text-slate-400"}`}><t.icon size={20} strokeWidth={tab === t.id ? 2.5 : 1.5} /><span className="text-[10px] font-medium">{t.label}</span></button>)}
         </div>
       </nav>
+      {console.log('[EditProfile] showProfileEdit:', showProfileEdit)}
       {showProfileEdit && <ProfileSetupScreen profile={profile} setProfile={setProfile} settings={settings} userId={userId} onClose={() => setShowProfileEdit(false)} />}
     </div>
   );
