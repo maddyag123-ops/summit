@@ -220,9 +220,11 @@ const SleepSlider = ({ value, onChange }) => {
         className="w-full h-2 rounded-full appearance-none cursor-pointer"
         style={{ background: `linear-gradient(to right, ${hrs === 0 ? '#334155' : hrs < 5 ? '#ef4444' : hrs < 6.5 ? '#eab308' : hrs < 8 ? '#38bdf8' : '#22c55e'} ${hrs / 12 * 100}%, #334155 ${hrs / 12 * 100}%)` }} />
       <div className="relative text-[9px] text-slate-600 h-3">
-        {[[0,'0h'],[4,'4h'],[6,'6h'],[8,'8h'],[10,'10h'],[12,'12h']].map(([v,l]) => (
-          <span key={v} className="absolute" style={{ left: `${v/12*100}%`, transform: 'translateX(-50%)' }}>{l}</span>
-        ))}
+        {[[0,'0h'],[4,'4h'],[6,'6h'],[8,'8h'],[10,'10h'],[12,'12h']].map(([v,l]) => {
+          const pct = v / 12 * 100;
+          const style = pct === 0 ? { left: 0 } : pct === 100 ? { right: 0 } : { left: `${pct}%`, transform: 'translateX(-50%)' };
+          return <span key={v} className="absolute" style={style}>{l}</span>;
+        })}
       </div>
     </div>
   );
@@ -278,7 +280,7 @@ const SentToggle = ({ sent, onChange }) => (
 
 // ─── Profile Setup Screen ───
 function ProfileSetupScreen({ profile, setProfile, settings, userId, onClose }) {
-  const [form, setForm] = useState({ ...profile });
+  const [form, setForm] = useState({ ...profile, discipline: Array.isArray(profile.discipline) ? profile.discipline : profile.discipline ? [profile.discipline] : [] });
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const unit = settings?.unit || "lbs";
 
