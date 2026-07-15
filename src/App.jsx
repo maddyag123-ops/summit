@@ -571,7 +571,7 @@ export default function ClimbingTracker() {
         prof = { ...prof, discipline: d === "All" ? ["Bouldering", "Sport", "Trad", "Speed"] : d ? [d] : [] };
       }
       setProfile(prof);
-      console.log('Profile loaded:', prof);
+
       if (prof !== data.profile) dbSet('athlete_data', uid, prof);
       initialized.current = true;
     } catch {
@@ -669,7 +669,7 @@ export default function ClimbingTracker() {
     if (s.sessionType === 'Rest' || !s.sessionDuration || !s.sessionRPE) return total;
     return total + (Number(s.sessionDuration) || 0) * (Number(s.sessionRPE) || 0);
   }, 0);
-  console.log('[Summit] Sessions for today:', day.sessions, 'daySessions:', daySessions, 'sessionLoad:', sessionLoad);
+
 
   useEffect(() => {
     if (sessionLoad > 0 && dailyData[selectedDate]?.sessionLoad !== sessionLoad)
