@@ -219,7 +219,7 @@ const SleepSlider = ({ value, onChange }) => {
       <input type="range" min={0} max={12} step={0.25} value={hrs} onChange={e => onChange(e.target.value)}
         className="w-full h-2 rounded-full appearance-none cursor-pointer"
         style={{ background: `linear-gradient(to right, ${hrs === 0 ? '#334155' : hrs < 5 ? '#ef4444' : hrs < 6.5 ? '#eab308' : hrs < 8 ? '#38bdf8' : '#22c55e'} ${hrs / 12 * 100}%, #334155 ${hrs / 12 * 100}%)` }} />
-      <div className="relative text-[9px] text-slate-600 h-3">
+      <div className="relative text-[9px] text-slate-600 h-3 px-[7px]">
         {[[0,'0h'],[4,'4h'],[6,'6h'],[8,'8h'],[10,'10h'],[12,'12h']].map(([v,l]) => {
           const pct = v / 12 * 100;
           const style = pct === 0 ? { left: 0 } : pct === 100 ? { right: 0 } : { left: `${pct}%`, transform: 'translateX(-50%)' };
@@ -370,10 +370,14 @@ function ProfileSetupScreen({ profile, setProfile, settings, userId, onClose }) 
             {["Bouldering", "Sport", "Trad", "Speed"].map(opt => {
               const active = (form.discipline || []).includes(opt);
               return <button key={opt} onClick={() => {
-                const newDisc = active ? form.discipline.filter(x => x !== opt) : [...(form.discipline || []), opt];
-                const newPct = { ...(form.disciplinePct || {}) };
-                if (active) delete newPct[opt];
-                setForm(p => ({ ...p, discipline: newDisc, disciplinePct: newPct }));
+                setForm(p => {
+                  const disc = Array.isArray(p.discipline) ? p.discipline : [];
+                  const isActive = disc.includes(opt);
+                  const newDisc = isActive ? disc.filter(x => x !== opt) : [...disc, opt];
+                  const newPct = { ...(p.disciplinePct || {}) };
+                  if (isActive) delete newPct[opt];
+                  return { ...p, discipline: newDisc, disciplinePct: newPct };
+                });
               }} className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border transition-all ${active ? "bg-sky-500/25 text-sky-300 border-sky-500/40" : "bg-slate-800/60 text-slate-500 border-slate-700/40 hover:border-slate-600"}`}>{opt}</button>;
             })}
           </div>
