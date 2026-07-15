@@ -219,7 +219,7 @@ const SleepSlider = ({ value, onChange }) => {
       <input type="range" min={0} max={12} step={0.5} value={hrs} onChange={e => onChange(e.target.value)}
         className="w-full accent-sky-400 cursor-pointer" />
       <div className="flex justify-between text-[10px] text-slate-600 mt-0.5">
-        <span>0h</span><span>12h</span>
+        <span>0h</span><span>6h</span><span>12h</span>
       </div>
     </div>
   );
