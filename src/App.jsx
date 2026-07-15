@@ -277,7 +277,13 @@ const SentToggle = ({ sent, onChange }) => (
 
 // ─── Profile Setup Screen ───
 function ProfileSetupScreen({ profile, setProfile, settings, userId, onClose }) {
-  const [form, setForm] = useState({ ...profile, discipline: Array.isArray(profile.discipline) ? profile.discipline : profile.discipline ? [profile.discipline] : [] });
+  const initForm = (p) => ({
+    ...p,
+    discipline: Array.isArray(p.discipline) ? p.discipline : p.discipline ? [p.discipline] : [],
+    disciplinePct: p.disciplinePct || {},
+  });
+  const [form, setForm] = useState(() => initForm(profile));
+  console.log('form.discipline on render:', JSON.stringify(form.discipline));
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const unit = settings?.unit || "lbs";
 
