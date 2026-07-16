@@ -216,7 +216,7 @@ const SleepSlider = ({ value, onChange }) => {
           <span className={`text-[10px] font-bold font-mono px-1.5 py-0.5 rounded ${score <= 3 ? "bg-red-500/20 text-red-400" : score <= 5 ? "bg-amber-500/20 text-amber-400" : score <= 7 ? "bg-sky-500/20 text-sky-400" : "bg-emerald-500/20 text-emerald-400"}`}>{score > 0 ? `${score}/10` : "—"}</span>
         </div>
       </div>
-      <input type="range" min={0} max={12} step={0.5} value={hrs} onChange={e => onChange(e.target.value)}
+      <input type="range" min={0} max={12} step={0.25} value={hrs} onChange={e => onChange(e.target.value)}
         className="w-full accent-sky-400 cursor-pointer" />
       <div className="flex justify-between text-[10px] text-slate-600 mt-0.5">
         <span>0h</span><span>6h</span><span>12h</span>
