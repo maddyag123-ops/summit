@@ -506,6 +506,7 @@ export default function ClimbingTracker() {
       if (session?.user) {
         const uid = session.user.id;
         const adminFlag = session.user.user_metadata?.isAdmin === true;
+        console.log('[Auth] isAdmin set to:', adminFlag, 'metadata:', session?.user?.user_metadata);
         setIsAdmin(adminFlag);
         setUserId(uid);
         setLoading(true);
@@ -1359,6 +1360,7 @@ export default function ClimbingTracker() {
       <nav className="fixed bottom-0 left-0 right-0 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800/50 z-50">
         <div className="max-w-2xl mx-auto flex">
           {navTabs.map(t => <button key={t.id} onClick={() => setTab(t.id)} className={`flex-1 py-2.5 flex flex-col items-center gap-0.5 transition-colors ${tab === t.id ? "text-sky-400" : "text-slate-600 hover:text-slate-400"}`}><t.icon size={20} strokeWidth={tab === t.id ? 2.5 : 1.5} /><span className="text-[10px] font-medium">{t.label}</span></button>)}
+          {console.log('[Nav] isAdmin at render time:', isAdmin)}
           {isAdmin && <button onClick={() => setTab("coach")} className={`flex-1 py-2.5 flex flex-col items-center gap-0.5 transition-colors ${tab === "coach" ? "text-sky-400" : "text-slate-600 hover:text-slate-400"}`}><Users size={20} strokeWidth={tab === "coach" ? 2.5 : 1.5} /><span className="text-[10px] font-medium">Coach</span></button>}
         </div>
       </nav>
