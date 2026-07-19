@@ -627,10 +627,22 @@ export default function ClimbingTracker() {
 
   // Load Coach View user list
   useEffect(() => {
-    if (tab === "coach") {
-      getAllUsers().then(users => setCoachUsers(users));
-    }
-  }, [tab]);
+    if (tab !== "coach") return;
+    const loadCoachUsers = async () => {
+      if (isAdmin) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, username')
+          .order('username');
+        if (error) { console.error('Admin load error:', error); return; }
+        setCoachUsers(data || []);
+      } else {
+        const users = await getAllUsers();
+        setCoachUsers(users);
+      }
+    };
+    loadCoachUsers();
+  }, [tab, isAdmin]);
 
   const updateDay = useCallback((date, field, value) => {
     setDailyData(prev => ({ ...prev, [date]: { ...(prev[date] || emptyDay()), [field]: value } }));
