@@ -488,12 +488,16 @@ export default function ClimbingTracker() {
   const [coachUsers, setCoachUsers] = useState([]);
   const [coachViewUser, setCoachViewUser] = useState(null); // null | { id, username }
   const [coachData, setCoachData] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // Listen to Supabase auth state changes
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
         const uid = session.user.id;
+        const adminFlag = session.user.user_metadata?.isAdmin === true;
+        setIsAdmin(adminFlag);
+        console.log('[Admin] isAdmin:', adminFlag, 'metadata:', session.user.user_metadata);
         setUserId(uid);
         setLoading(true);
         const name = await getProfile(uid);
@@ -507,6 +511,7 @@ export default function ClimbingTracker() {
       } else {
         setUserId(null);
         setDisplayName(null);
+        setIsAdmin(false);
         initialized.current = false;
         setDailyData({});
         setClimbData({});
@@ -1325,7 +1330,7 @@ export default function ClimbingTracker() {
         {tab === "plan" && (
           <div className="flex items-center justify-center h-40 text-slate-600 text-sm">Block system coming soon</div>
         )}
-        {tab === "coach" && <CoachView {...{ coachUsers, currentUser: displayName, loadUserData, coachViewUser, setCoachViewUser, coachData, setCoachData }} />}
+        {tab === "coach" && <CoachView {...{ coachUsers, currentUser: displayName, loadUserData, coachViewUser, setCoachViewUser, coachData, setCoachData, isAdmin }} />}
       </main>
       <nav className="fixed bottom-0 left-0 right-0 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800/50 z-50">
         <div className="max-w-2xl mx-auto flex">
@@ -2967,7 +2972,7 @@ function DashboardView({ dailyData, ewmaData, fingerEWMAData, weekOnOffSplit, da
 }
 
 // ─── COACH VIEW ───
-function CoachView({ coachUsers, currentUser, loadUserData, coachViewUser, setCoachViewUser, coachData, setCoachData }) {
+function CoachView({ coachUsers, currentUser, loadUserData, coachViewUser, setCoachViewUser, coachData, setCoachData, isAdmin }) {
   const [loadingUser, setLoadingUser] = useState(false);
 
   // user: { id, username }
@@ -2983,7 +2988,12 @@ function CoachView({ coachUsers, currentUser, loadUserData, coachViewUser, setCo
   if (!coachViewUser) {
     return (
       <div className="space-y-4">
-        <h2 className="text-lg font-bold">Coach View</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-bold">Coach View</h2>
+          {isAdmin && (
+            <span className="px-2 py-0.5 bg-violet-500/20 text-violet-400 border border-violet-500/30 rounded-full text-[10px] font-semibold">Admin</span>
+          )}
+        </div>
         <p className="text-xs text-slate-500">{coachUsers.length} athlete{coachUsers.length !== 1 ? "s" : ""} registered</p>
         {coachUsers.length === 0 && <Card><div className="text-center text-slate-500 py-8 text-sm">No athletes yet. Athletes will appear here once they sign up and start logging.</div></Card>}
         {coachUsers.map(user => (
