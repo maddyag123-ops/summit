@@ -16,7 +16,11 @@ async function dbSet(table, userId, value) {
   try {
     const { error } = await supabase.from(table).upsert({ user_id: userId, data: value }, { onConflict: 'user_id' });
     if (error) throw error;
-  } catch (e) { console.error(`DB save error (${table}):`, e); }
+    return true;
+  } catch (e) {
+    console.error(`DB save error (${table}):`, e);
+    return false;
+  }
 }
 
 async function getProfile(userId) {
@@ -55,7 +59,13 @@ async function loadUserData(userId) {
 }
 
 // ─── Helpers ───
-const todayStr = () => new Date().toISOString().slice(0, 10);
+const todayStr = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 const fmtDate = (d) => new Date(d + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 const fmtShort = (d) => new Date(d + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
 const avg = (a, b) => { const na = Number(a) || 0, nb = Number(b) || 0; if (na && nb) return (na + nb) / 2; return na || nb || 0; };
@@ -497,7 +507,6 @@ export default function ClimbingTracker() {
         const uid = session.user.id;
         const adminFlag = session.user.user_metadata?.isAdmin === true;
         setIsAdmin(adminFlag);
-        console.log('[Admin] isAdmin:', adminFlag, 'metadata:', session.user.user_metadata);
         setUserId(uid);
         setLoading(true);
         const name = await getProfile(uid);
@@ -614,7 +623,10 @@ export default function ClimbingTracker() {
     if (!initialized.current || !userId) return;
     const table = TABLE_MAP[key]; if (!table) return;
     clearTimeout(saveTimers.current[key]);
-    saveTimers.current[key] = setTimeout(() => dbSet(table, userId, value), 500);
+    saveTimers.current[key] = setTimeout(async () => {
+      const ok = await dbSet(table, userId, value);
+      if (!ok) showStatus("error", "Save failed — check your connection");
+    }, 500);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
@@ -1242,7 +1254,7 @@ export default function ClimbingTracker() {
     { id: "assess", label: "Assess", icon: TrendingUp },
     { id: "dashboard", label: "Dash", icon: BarChart3 },
     { id: "plan", label: "Plan", icon: Calendar },
-    { id: "coach", label: "Coach", icon: Users },
+    ...(isAdmin ? [{ id: "coach", label: "Coach", icon: Users }] : []),
   ];
 
   // Loading screen
@@ -1342,7 +1354,8 @@ export default function ClimbingTracker() {
         {tab === "plan" && (
           <div className="flex items-center justify-center h-40 text-slate-600 text-sm">Block system coming soon</div>
         )}
-        {tab === "coach" && <CoachView {...{ coachUsers, currentUser: displayName, loadUserData, coachViewUser, setCoachViewUser, coachData, setCoachData, isAdmin }} />}
+        {tab === "coach" && isAdmin && <CoachView {...{ coachUsers, currentUser: displayName, loadUserData, coachViewUser, setCoachViewUser, coachData, setCoachData, isAdmin }} />}
+        {tab === "coach" && !isAdmin && <div className="flex items-center justify-center h-40 text-slate-600 text-sm">Coach access required</div>}
       </main>
       <nav className="fixed bottom-0 left-0 right-0 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800/50 z-50">
         <div className="max-w-2xl mx-auto flex">
