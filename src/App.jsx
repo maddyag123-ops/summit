@@ -110,9 +110,9 @@ const dayMarkerAvg = (dd, type) => {
 const BASELINE_DAYS = 21;
 const rollingStats = (values, window = 28) => {
   const recent = values.slice(-window);
-  if (recent.length < 5) return null; // not enough data
+  if (recent.length < 14) return null; // not enough data
   const mean = recent.reduce((a, b) => a + b, 0) / recent.length;
-  const variance = recent.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / recent.length;
+  const variance = recent.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (recent.length - 1);
   const sd = Math.sqrt(variance);
   return { mean: Math.round(mean * 100) / 100, sd: Math.round(sd * 100) / 100 };
 };
@@ -593,8 +593,7 @@ export default function ClimbingTracker() {
       if (prof !== data.profile) dbSet('athlete_data', uid, prof);
       initialized.current = true;
     } catch {
-      // Offline or slow — open with empty local state; data will sync when
-      // connectivity resumes and the user triggers a save.
+      showStatus("error", "Could not load your data — check your connection and refresh");
     } finally {
       setLoading(false);
     }
@@ -1350,8 +1349,8 @@ export default function ClimbingTracker() {
         </div>
       </div>}
       <main className="max-w-2xl mx-auto px-4 py-4 pb-24">
-        {tab === "today" && <TodayView {...{ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, restPattern, loadTrajectory, deloadStatus, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData, morningMarker30DayAvg }} />}
-        {tab === "climbs" && <ClimbView {...{ selectedDate, shiftDate, climbData, setClimbData, settings, dailyData, setDailyData, profile, datesSorted }} />}
+        {tab === "today" && <TodayView {...{ selectedDate, setSelectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, restPattern, loadTrajectory, deloadStatus, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData, morningMarker30DayAvg }} />}
+        {tab === "climbs" && <ClimbView {...{ selectedDate, setSelectedDate, shiftDate, climbData, setClimbData, settings, dailyData, setDailyData, profile, datesSorted }} />}
         {tab === "assess" && <AssessView {...{ assessData, setAssessData, settings, injuryData, setInjuryData, dailyData, ewmaData, datesSorted }} />}
         {tab === "dashboard" && <DashboardView {...{ dailyData, ewmaData, fingerEWMAData, weekOnOffSplit, datesSorted, assessData, climbData }} />}
         {tab === "plan" && (
@@ -1463,7 +1462,7 @@ function getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedD
   return null;
 }
 
-function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, restPattern, loadTrajectory, deloadStatus, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData, morningMarker30DayAvg }) {
+function TodayView({ selectedDate, setSelectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, restPattern, loadTrajectory, deloadStatus, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData, morningMarker30DayAvg }) {
   const [showForceMarker, setShowForceMarker] = useState(false);
   const [showForceInfo, setShowForceInfo] = useState(false);
   const isToday = selectedDate === todayStr();
@@ -1529,7 +1528,10 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <button onClick={() => shiftDate(-1)} className="p-2 rounded-lg hover:bg-slate-800"><ChevronLeft size={20} className="text-slate-400" /></button>
-        <div className="text-center"><div className="text-lg font-bold">{isToday ? "Today" : fmtDate(selectedDate)}</div>{isToday && <div className="text-xs text-slate-500">{fmtDate(selectedDate)}</div>}</div>
+        <div className="flex items-center gap-2">
+          <div className="text-center"><div className="text-lg font-bold">{isToday ? "Today" : fmtDate(selectedDate)}</div>{isToday && <div className="text-xs text-slate-500">{fmtDate(selectedDate)}</div>}</div>
+          {!isToday && <button onClick={() => setSelectedDate(todayStr())} className="px-2 py-0.5 text-[10px] text-sky-400 border border-sky-500/30 rounded-lg hover:bg-sky-500/10 transition-all">Today</button>}
+        </div>
         <button onClick={() => shiftDate(1)} className="p-2 rounded-lg hover:bg-slate-800"><ChevronRight size={20} className="text-slate-400" /></button>
       </div>
       <Card className={`border-l-4 ${readiness.color === "green" ? "border-l-emerald-500" : readiness.color === "yellow" ? "border-l-amber-500" : readiness.color === "red" ? "border-l-red-500" : "border-l-slate-600"}`}>
@@ -1963,7 +1965,7 @@ function TodayView({ selectedDate, shiftDate, day, updateDay, wellnessTotal, wel
 }
 
 // ─── CLIMB VIEW ───
-function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings, dailyData, setDailyData, profile, datesSorted }) {
+function ClimbView({ selectedDate, setSelectedDate, shiftDate, climbData, setClimbData, settings, dailyData, setDailyData, profile, datesSorted }) {
   const isToday = selectedDate === todayStr();
   const unit = settings.unit || "lbs";
   const emptyDC = () => ({ baselineInstrument: settings.instrument, baselineL: "", baselineR: "", baselineGripL: "", baselineGripR: "", climbs: [] });
@@ -2211,7 +2213,10 @@ function ClimbView({ selectedDate, shiftDate, climbData, setClimbData, settings,
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <button onClick={() => shiftDate(-1)} className="p-2 rounded-lg hover:bg-slate-800"><ChevronLeft size={20} className="text-slate-400" /></button>
-        <div className="text-center"><div className="text-lg font-bold">{isToday ? "Today" : fmtDate(selectedDate)}</div><div className="text-xs text-slate-500">Climb Log</div></div>
+        <div className="flex items-center gap-2">
+          <div className="text-center"><div className="text-lg font-bold">{isToday ? "Today" : fmtDate(selectedDate)}</div><div className="text-xs text-slate-500">Climb Log</div></div>
+          {!isToday && <button onClick={() => setSelectedDate(todayStr())} className="px-2 py-0.5 text-[10px] text-sky-400 border border-sky-500/30 rounded-lg hover:bg-sky-500/10 transition-all">Today</button>}
+        </div>
         <button onClick={() => shiftDate(1)} className="p-2 rounded-lg hover:bg-slate-800"><ChevronRight size={20} className="text-slate-400" /></button>
       </div>
 
@@ -2671,12 +2676,21 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
     return [...names].sort();
   }, [injuryData]);
 
+  const resolveCondition = (condName) => {
+    setInjuryData(p => [...p, { _type: "resolved", condition: condName, date: todayStr() }]);
+  };
+  const unresolveCondition = (condName) => {
+    setInjuryData(p => p.filter(e => !(e._type === "resolved" && e.condition === condName)));
+  };
+
   // Group entries by condition
   const conditions = useMemo(() => {
     const grouped = {};
+    const resolved = new Set();
     injuryData.forEach(e => {
       const c = (e.condition || "").trim();
       if (!c) return;
+      if (e._type === "resolved") { resolved.add(c); return; }
       if (!grouped[c]) grouped[c] = [];
       grouped[c].push(e);
     });
@@ -2689,8 +2703,11 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
       const peakPain = Math.max(...sorted.map(maxPainOfEntry));
       const firstPain = maxPainOfEntry(sorted[0]);
       const trend = currentPain - firstPain;
-      return { name, entries: sorted, first, last, daysActive, currentPain, peakPain, trend };
-    }).sort((a, b) => (b.last || "").localeCompare(a.last || ""));
+      return { name, entries: sorted, first, last, daysActive, currentPain, peakPain, trend, resolved: resolved.has(name) };
+    }).sort((a, b) => {
+      if (a.resolved !== b.resolved) return a.resolved ? 1 : -1;
+      return (b.last || "").localeCompare(a.last || "");
+    });
   }, [injuryData]);
 
   // Get max RPE for a given date from sessions
@@ -2712,7 +2729,7 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
     <div className="space-y-4">
       <div className="flex items-center justify-between"><h2 className="text-lg font-bold">Injury Tracker</h2><button onClick={() => { setForm({ ...emptyInjury(), date: todayStr() }); setEditing(null); setView("log"); }} className="px-3 py-1.5 bg-red-500/20 text-red-400 rounded-lg text-xs font-semibold hover:bg-red-500/30 flex items-center gap-1.5"><Plus size={14} /> New</button></div>
       <div className="flex gap-1 bg-slate-900/50 rounded-xl p-1">
-        {[{ id: "log", label: "Log Entry" }, { id: "timeline", label: `Conditions (${conditions.length})` }].map(s => (
+        {[{ id: "log", label: "Log Entry" }, { id: "timeline", label: `Conditions (${conditions.filter(c => !c.resolved).length}${conditions.some(c => c.resolved) ? `+${conditions.filter(c => c.resolved).length}r` : ""})` }].map(s => (
           <button key={s.id} onClick={() => setView(s.id)} className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${view === s.id ? "bg-slate-700/60 text-white" : "text-slate-500 hover:text-slate-300"}`}>{s.label}</button>
         ))}
       </div>
@@ -2852,14 +2869,17 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
           const trendColor = cond.trend < 0 ? "text-emerald-400" : cond.trend > 0 ? "text-red-400" : "text-slate-400";
           const trendArrow = cond.trend < 0 ? "↓" : cond.trend > 0 ? "↑" : "→";
           const secondaryLabel = chartAxis === "load" ? "Chronic Load" : "Session RPE";
-          return <Card key={cond.name}>
+          return <Card key={cond.name} className={cond.resolved ? "opacity-60" : ""}>
             <div className="flex items-center justify-between mb-3">
               <div>
-                <div className="text-sm font-semibold">{cond.name}</div>
+                <div className="flex items-center gap-2">
+                  <div className="text-sm font-semibold">{cond.name}</div>
+                  {cond.resolved && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-semibold">Resolved</span>}
+                </div>
                 <div className="text-[10px] text-slate-500">{cond.daysActive} days · {cond.entries.length} entries · {activeParts.length} areas</div>
               </div>
               <div className="text-right">
-                <Badge color={cond.currentPain >= 5 ? "red" : cond.currentPain >= 3 ? "yellow" : "green"}>Now: {cond.currentPain}/10</Badge>
+                {!cond.resolved && <Badge color={cond.currentPain >= 5 ? "red" : cond.currentPain >= 3 ? "yellow" : "green"}>Now: {cond.currentPain}/10</Badge>}
                 <div className={`text-[10px] font-bold mt-1 ${trendColor}`}>{trendArrow} {cond.trend > 0 ? "+" : ""}{cond.trend} since start</div>
               </div>
             </div>
@@ -2882,7 +2902,12 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
             </div>
             <div className="mt-2 flex items-center justify-between">
               <div className="text-[10px] text-slate-600">First: {fmtDate(cond.first)} · Peak: {cond.peakPain}/10</div>
-              <button onClick={() => addUpdateForCondition(cond.name)} className="text-[10px] text-sky-400 hover:text-sky-300 font-semibold">+ Add Update</button>
+              <div className="flex items-center gap-2">
+                {!cond.resolved && <button onClick={() => addUpdateForCondition(cond.name)} className="text-[10px] text-sky-400 hover:text-sky-300 font-semibold">+ Add Update</button>}
+                {cond.resolved
+                  ? <button onClick={() => unresolveCondition(cond.name)} className="text-[10px] text-slate-500 hover:text-amber-400 font-semibold">Reopen</button>
+                  : <button onClick={() => resolveCondition(cond.name)} className="text-[10px] text-emerald-500 hover:text-emerald-400 font-semibold">Mark Resolved</button>}
+              </div>
             </div>
           </Card>;
         })}
