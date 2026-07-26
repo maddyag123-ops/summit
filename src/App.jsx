@@ -41,7 +41,7 @@ async function getAllUsers() {
 const emptyProfile = () => ({
   bodyweight: "", height: "", sex: "", dob: "", dominantHand: "",
   climbingYears: "", trainingYears: "", discipline: [], disciplinePct: {}, indoorOutdoorSplit: 50,
-  onsightGradeSport: "", flashGradeBoulder: "", completed: false,
+  onsightGradeSport: "", flashGradeBoulder: "", completed: false, onboardingComplete: false,
   nudgeState: {},
   deloadWeeks: [],
 });
@@ -284,7 +284,7 @@ const SentToggle = ({ sent, onChange }) => (
 );
 
 // ─── Profile Setup Screen ───
-function ProfileSetupScreen({ profile, setProfile, settings, userId, onClose }) {
+function ProfileSetupScreen({ profile, setProfile, settings, userId, onClose, onComplete, onSkip, isOnboarding }) {
   const initForm = (p) => ({
     ...p,
     discipline: Array.isArray(p.discipline) ? p.discipline : p.discipline ? [p.discipline] : [],
@@ -295,16 +295,18 @@ function ProfileSetupScreen({ profile, setProfile, settings, userId, onClose }) 
   const unit = settings?.unit || "lbs";
 
   function save() {
-    const saved = { ...form, completed: true };
+    const saved = { ...form, completed: true, ...(isOnboarding ? { onboardingComplete: true } : {}) };
     setProfile(saved);
     if (userId) dbSet('athlete_data', userId, saved);
-    if (onClose) onClose();
+    if (onComplete) onComplete();
+    else if (onClose) onClose();
   }
   function skip() {
-    const saved = { ...profile, completed: true };
+    const saved = { ...profile, completed: true, ...(isOnboarding ? { onboardingComplete: true } : {}) };
     setProfile(saved);
     if (userId) dbSet('athlete_data', userId, saved);
-    if (onClose) onClose();
+    if (onSkip) onSkip();
+    else if (onClose) onClose();
   }
 
   const Toggle = ({ field, options }) => (
@@ -442,11 +444,13 @@ function ProfileSetupScreen({ profile, setProfile, settings, userId, onClose }) 
       </div>
 
       <div className="space-y-2 pt-2">
-        <button onClick={save} className="w-full py-3 bg-sky-500 hover:bg-sky-600 text-white rounded-xl text-sm font-semibold transition-all">Save Profile</button>
+        <button onClick={save} className="w-full py-3 bg-sky-500 hover:bg-sky-600 text-white rounded-xl text-sm font-semibold transition-all">{isOnboarding ? "Save and start logging" : "Save Profile"}</button>
         {!onClose && <button onClick={skip} className="w-full py-2 text-slate-500 hover:text-slate-300 text-xs transition-all">Skip for now</button>}
       </div>
     </div>
   );
+
+  if (isOnboarding) return content;
 
   if (onClose) return (
     <div className="fixed inset-0 z-[100] bg-slate-950/90 backdrop-blur-sm flex items-start justify-center overflow-y-auto" style={{ fontFamily: "'DM Sans', sans-serif" }}>
@@ -490,6 +494,8 @@ export default function ClimbingTracker() {
   const [profile, setProfile] = useState(emptyProfile());
   const [showSettings, setShowSettings] = useState(false);
   const [showProfileEdit, setShowProfileEdit] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(1);
   const [dataStatus, setDataStatus] = useState(null);
   const initialized = useRef(false);
   const saveTimers = useRef({});
@@ -588,9 +594,17 @@ export default function ClimbingTracker() {
         const d = prof.discipline;
         prof = { ...prof, discipline: d === "All" ? ["Bouldering", "Sport", "Trad", "Speed"] : d ? [d] : [] };
       }
+      // Existing user who completed old profile setup — mark onboarding done, no overlay
+      if (prof.completed && !prof.onboardingComplete) {
+        prof = { ...prof, onboardingComplete: true };
+      }
       setProfile(prof);
 
       if (prof !== data.profile) dbSet('athlete_data', uid, prof);
+      if (!prof.onboardingComplete) {
+        setShowOnboarding(true);
+        setOnboardingStep(1);
+      }
       initialized.current = true;
     } catch {
       showStatus("error", "Could not load your data — check your connection and refresh");
@@ -1325,8 +1339,78 @@ export default function ClimbingTracker() {
 
   if (!profile.completed) return <ProfileSetupScreen profile={profile} setProfile={setProfile} settings={settings} userId={userId} />;
 
+  const completeOnboarding = () => {
+    setShowOnboarding(false);
+    setProfile(p => {
+      const saved = { ...p, onboardingComplete: true };
+      if (userId) dbSet('athlete_data', userId, saved);
+      return saved;
+    });
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+      {showOnboarding && (
+        <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+          <div className="flex justify-center gap-2 pt-8 pb-4">
+            {[1, 2].map(step => (
+              <div key={step} className={`w-1.5 h-1.5 rounded-full transition-all ${onboardingStep === step ? 'bg-sky-400' : 'bg-slate-700'}`} />
+            ))}
+          </div>
+
+          {onboardingStep === 1 && (
+            <div className="flex-1 flex flex-col px-8 pt-8 overflow-y-auto">
+              <div className="flex items-center justify-center gap-3 mb-10">
+                {[
+                  { icon: '📋', label: 'Today' },
+                  { icon: '→', label: '' },
+                  { icon: '🧗', label: 'Climbs' },
+                  { icon: '→', label: '' },
+                  { icon: '😴', label: 'Rest' },
+                  { icon: '→', label: '' },
+                  { icon: '🔁', label: 'Repeat' },
+                ].map((item, i) => (
+                  <div key={i} className="flex flex-col items-center gap-1">
+                    <span className={item.label ? 'text-2xl' : 'text-slate-600 text-lg'}>{item.icon}</span>
+                    {item.label && <span className="text-[10px] text-slate-500">{item.label}</span>}
+                  </div>
+                ))}
+              </div>
+
+              <h1 className="text-2xl font-bold text-slate-100 mb-4 font-serif">Train smarter over time</h1>
+              <p className="text-slate-400 text-sm leading-relaxed mb-4">
+                Summit tracks how your body responds to climbing: load, recovery, and readiness, so you can see patterns you would otherwise miss. Log your daily wellness and sessions, track injuries in context against your training load, and watch your readiness signal get more accurate over time.
+              </p>
+              <p className="text-slate-600 text-xs leading-relaxed">
+                The more consistently you log, the more accurate your signal becomes. Most features improve meaningfully after 2 weeks.
+              </p>
+
+              <div className="mt-auto pb-10 space-y-3">
+                <button onClick={() => setOnboardingStep(2)} className="w-full py-3 bg-sky-500 hover:bg-sky-400 text-white font-semibold rounded-xl transition-all text-sm">Get started</button>
+                <button onClick={completeOnboarding} className="w-full py-2 text-slate-500 text-sm hover:text-slate-300 transition-all">Skip</button>
+              </div>
+            </div>
+          )}
+
+          {onboardingStep === 2 && (
+            <div className="flex-1 flex flex-col px-8 pt-8 overflow-y-auto">
+              <h1 className="text-2xl font-bold text-slate-100 mb-2 font-serif">Personalise your targets from day one</h1>
+              <p className="text-slate-400 text-sm leading-relaxed mb-6">
+                These are optional, but filling them in means Summit can calculate targets specific to you.
+              </p>
+              <ProfileSetupScreen
+                profile={profile}
+                setProfile={setProfile}
+                settings={settings}
+                userId={userId}
+                onComplete={completeOnboarding}
+                onSkip={completeOnboarding}
+                isOnboarding={true}
+              />
+            </div>
+          )}
+        </div>
+      )}
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
       <header className="sticky top-0 z-50 bg-slate-950/90 backdrop-blur-xl border-b border-slate-800/50">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
