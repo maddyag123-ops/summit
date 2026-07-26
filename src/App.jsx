@@ -73,7 +73,7 @@ const pctCalc = (post, bl) => (bl && post) ? Math.round((post / bl) * 100) : nul
 
 function computeEWMA(data, dates) {
   const lA = .25, lC = .069; let a = 0, c = 0, r = {};
-  dates.forEach((d, i) => { const sessions = data[d]?.sessions || []; const allRest = sessions.length > 0 && sessions.every(s => s.sessionType === 'Rest'); const l = allRest ? 0 : (data[d]?.sessionLoad || 0); if (i === 0) { a = l; c = l; } else { a = lA * l + (1 - lA) * a; c = lC * l + (1 - lC) * c; } r[d] = { acute: Math.round(a * 10) / 10, chronic: Math.round(c * 10) / 10, ratio: c > 0 ? Math.round(a / c * 100) / 100 : 0 }; });
+  dates.forEach((d, i) => { const sessions = data[d]?.sessions || []; const allRest = sessions.length > 0 && sessions.every(s => s.sessionType === 'Rest'); const l = allRest ? 0 : (data[d]?.sessionLoad || 0); if (i === 0) { a = l * lA; c = l * lC; } else { a = lA * l + (1 - lA) * a; c = lC * l + (1 - lC) * c; } r[d] = { acute: Math.round(a * 10) / 10, chronic: Math.round(c * 10) / 10, ratio: c > 0 ? Math.round(a / c * 100) / 100 : 0 }; });
   return r;
 }
 
@@ -85,11 +85,40 @@ function computeFingerEWMA(data, dates) {
       if (!FINGER_SESSIONS.includes(s.sessionType) || !s.sessionDuration || !s.sessionRPE) return sum;
       return sum + (Number(s.sessionDuration) || 0) * (Number(s.sessionRPE) || 0);
     }, 0);
-    if (i === 0) { a = l; c = l; }
+    if (i === 0) { a = l * lA; c = l * lC; }
     else { a = lA * l + (1 - lA) * a; c = lC * l + (1 - lC) * c; }
     r[d] = { acute: Math.round(a * 10) / 10, chronic: Math.round(c * 10) / 10, ratio: c > 0 ? Math.round(a / c * 100) / 100 : 0 };
   });
   return r;
+}
+
+function generateSampleData() {
+  const sample = { daily: {}, climbs: {}, assess: [], injury: {} };
+  const today = new Date();
+  for (let i = 41; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const isRest = i % 7 === 0 || i % 7 === 4;
+    const baseRPE = 6 + Math.sin(i / 5) * 2;
+    sample.daily[dateStr] = {
+      sleepDuration: (7 + Math.sin(i / 4) * 1.2).toFixed(2),
+      motivation: Math.round(6 + Math.sin(i / 6) * 2),
+      soreness: Math.round(6 + Math.cos(i / 5) * 2),
+      fingerSoreness: Math.round(7 + Math.cos(i / 4) * 2),
+      stress: Math.round(5 + Math.sin(i / 7) * 2),
+      hydration: Math.round(6 + Math.cos(i / 6) * 2),
+      sessions: isRest ? [{ sessionType: 'Rest', sessionDuration: '', sessionRPE: '' }] : [{
+        sessionType: i % 3 === 0 ? 'Bouldering — Power' : i % 3 === 1 ? 'Sport Climbing — Rope' : 'Conditioning',
+        sessionDuration: String(Math.round(60 + Math.sin(i / 3) * 20)),
+        sessionRPE: String(Math.round(baseRPE)),
+        outdoor: i % 5 === 0,
+      }],
+      hcTryHardL: (100 + Math.sin(i / 8) * 8).toFixed(1),
+      hcTryHardR: (105 + Math.sin(i / 8) * 8).toFixed(1),
+    };
+  }
+  return sample;
 }
 
 const hoursToScore = (h) => { const n = Number(h); if (!n || n <= 0) return 0; if (n < 4) return 1; if (n < 5) return 2; if (n < 5.5) return 3; if (n < 6) return 4; if (n < 6.5) return 5; if (n < 7) return 6; if (n < 7.5) return 7; if (n < 8) return 8; if (n < 9) return 9; return 10; };
@@ -725,6 +754,12 @@ export default function ClimbingTracker() {
   const datesSorted = useMemo(() => Object.keys(dailyData).sort(), [dailyData]);
   const ewmaData = useMemo(() => computeEWMA(dailyData, datesSorted), [dailyData, datesSorted]);
   const fingerEWMAData = useMemo(() => computeFingerEWMA(dailyData, datesSorted), [dailyData, datesSorted]);
+
+  const [previewMode, setPreviewMode] = useState(false);
+  const sampleData = useMemo(() => generateSampleData(), []);
+  const displayDatesSorted = previewMode ? Object.keys(sampleData.daily).sort() : datesSorted;
+  const displayDailyData = previewMode ? sampleData.daily : dailyData;
+  const displayEwmaData = useMemo(() => previewMode ? computeEWMA(sampleData.daily, displayDatesSorted) : ewmaData, [previewMode, sampleData, displayDatesSorted, ewmaData]);
 
   const loadTrajectory = useMemo(() => {
     const relevantDates = datesSorted.filter(d => d <= selectedDate);
@@ -1450,7 +1485,24 @@ export default function ClimbingTracker() {
         {tab === "today" && <TodayView {...{ selectedDate, setSelectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, restPattern, loadTrajectory, deloadStatus, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData, morningMarker30DayAvg }} />}
         {tab === "climbs" && <ClimbView {...{ selectedDate, setSelectedDate, shiftDate, climbData, setClimbData, settings, dailyData, setDailyData, profile, datesSorted }} />}
         {tab === "assess" && <AssessView {...{ assessData, setAssessData, settings, injuryData, setInjuryData, dailyData, ewmaData, datesSorted }} />}
-        {tab === "dashboard" && <DashboardView {...{ dailyData, ewmaData, fingerEWMAData, weekOnOffSplit, datesSorted, assessData, climbData }} />}
+        {tab === "dashboard" && <>
+          {datesSorted.length < 14 && (
+            <button onClick={() => setPreviewMode(p => !p)}
+              className={`w-full py-2.5 rounded-xl text-xs font-semibold transition-all mb-3 ${
+                previewMode
+                  ? 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
+                  : 'bg-slate-900/40 text-slate-400 border border-slate-700/30 hover:border-violet-500/30'
+              }`}>
+              {previewMode ? '← Back to your data' : 'See example data (42 days of sample logging)'}
+            </button>
+          )}
+          {previewMode && (
+            <div className="bg-violet-500/10 border border-violet-500/30 rounded-lg px-3 py-2 mb-3 text-center">
+              <span className="text-[10px] text-violet-300 font-semibold">Showing example data, not yours</span>
+            </div>
+          )}
+          <DashboardView {...{ dailyData: displayDailyData, ewmaData: displayEwmaData, fingerEWMAData, weekOnOffSplit, datesSorted: displayDatesSorted, assessData, climbData }} />
+        </>}
         {tab === "plan" && (
           <div className="flex items-center justify-center h-40 text-slate-600 text-sm">Block system coming soon</div>
         )}
