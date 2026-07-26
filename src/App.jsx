@@ -1431,6 +1431,20 @@ export default function ClimbingTracker() {
           {dataStatus && <p className={`text-[10px] mt-1.5 font-semibold ${dataStatus.type === "error" ? "text-red-400" : "text-emerald-400"}`}>{dataStatus.msg}</p>}
           {!dataStatus && <p className="text-[10px] text-slate-600 mt-1">{Object.keys(dailyData).length} days logged</p>}
         </div>
+        {isAdmin && (
+          <div className="pt-3 border-t border-slate-800/50">
+            <button
+              onClick={() => {
+                setProfile(p => ({ ...p, onboardingComplete: false }));
+                setShowSettings(false);
+                setShowOnboarding(true);
+                setOnboardingStep(1);
+              }}
+              className="w-full py-2 mt-2 text-[10px] text-violet-400 border border-violet-500/30 rounded-lg hover:bg-violet-500/10 transition-all">
+              Dev: Preview onboarding
+            </button>
+          </div>
+        )}
       </div>}
       <main className="max-w-2xl mx-auto px-4 py-4 pb-24">
         {tab === "today" && <TodayView {...{ selectedDate, setSelectedDate, shiftDate, day, updateDay, wellnessTotal, wellnessCount, readiness, positiveCues, restPattern, loadTrajectory, deloadStatus, sessionLoad, fingerLoad, todayEWMA, settings, dailyData, daySessions, setDailyData, profile, setProfile, datesSorted, assessData, morningMarker30DayAvg }} />}
