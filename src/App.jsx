@@ -134,9 +134,9 @@ function generateSampleData() {
   }
   const sampleDates = Object.keys(sample.daily).sort();
   sample.assess = [
-    { date: sampleDates[5], maxHangL: '18', maxHangR: '19', bodyweight: '68' },
-    { date: sampleDates[19], maxHangL: '19.5', maxHangR: '20', bodyweight: '68' },
-    { date: sampleDates[35], maxHangL: '21', maxHangR: '21.5', bodyweight: '67' },
+    { date: sampleDates[5], maxHang: '18', bodyweight: '68' },
+    { date: sampleDates[19], maxHang: '19.5', bodyweight: '68' },
+    { date: sampleDates[35], maxHang: '21', bodyweight: '67' },
   ];
   return sample;
 }
