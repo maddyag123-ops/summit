@@ -777,6 +777,8 @@ export default function ClimbingTracker() {
 
   const [previewMode, setPreviewMode] = useState(false);
   const sampleData = useMemo(() => generateSampleData(), []);
+  console.log('sampleData:', sampleData);
+  console.log('previewMode at display compute:', previewMode);
   const displayDatesSorted = previewMode ? Object.keys(sampleData.daily).sort() : datesSorted;
   const displayDailyData = previewMode ? sampleData.daily : dailyData;
   const displayEwmaData = useMemo(() => previewMode ? computeEWMA(sampleData.daily, displayDatesSorted) : ewmaData, [previewMode, sampleData, displayDatesSorted, ewmaData]);
