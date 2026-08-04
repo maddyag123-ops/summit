@@ -115,8 +115,10 @@ function generateSampleData() {
         sessionRPE: String(Math.round(baseRPE)),
         outdoor: i % 5 === 0,
       }],
-      hcTryHardL: (100 + Math.sin(i / 8) * 8).toFixed(1),
-      hcTryHardR: (105 + Math.sin(i / 8) * 8).toFixed(1),
+      tindeqGripType: 'Half Crimp',
+      tindeqIntensity: 'Try Hard',
+      tindeqHCTHL: (100 + Math.sin(i / 8) * 8).toFixed(1),
+      tindeqHCTHR: (105 + Math.sin(i / 8) * 8).toFixed(1),
     };
     sample.climbs[dateStr] = {
       climbs: isRest ? [] : [{
