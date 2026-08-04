@@ -1206,7 +1206,7 @@ export default function ClimbingTracker() {
       const weekTotals = [];
       for (let w = 1; w <= 4; w++) {
         const weekEnd = new Date(todayD);
-        weekEnd.setDate(todayD.getDate() - (w - 1) * 7);
+        weekEnd.setDate(todayD.getDate() - w * 7);
         const weekStart = new Date(weekEnd);
         weekStart.setDate(weekEnd.getDate() - 7);
         const weekStartStr = weekStart.toISOString().slice(0, 10);
@@ -2176,6 +2176,8 @@ function ClimbView({ selectedDate, setSelectedDate, shiftDate, climbData, setCli
   const toggleExpanded = (idx) => setExpandedClimbs(p => ({ ...p, [idx]: !p[idx] }));
   const [deletedClimb, setDeletedClimb] = useState(null);
   const [undoTimeout, setUndoTimeout] = useState(null);
+  const [duplicatedClimb, setDuplicatedClimb] = useState(null);
+  const [dupUndoTimeout, setDupUndoTimeout] = useState(null);
   const [nameFocused, setNameFocused] = useState({});
   const [showProjects, setShowProjects] = useState(false);
 
@@ -2245,9 +2247,22 @@ function ClimbView({ selectedDate, setSelectedDate, shiftDate, climbData, setCli
       isProject: source.isProject || false,
       attempts: source.attempts ? String(Number(source.attempts) + 1) : '2',
     };
+    const insertIdx = idx + 1;
     const updatedClimbs = [...dc.climbs];
-    updatedClimbs.splice(idx + 1, 0, newClimb);
+    updatedClimbs.splice(insertIdx, 0, newClimb);
     updateDC('climbs', updatedClimbs);
+    if (dupUndoTimeout) clearTimeout(dupUndoTimeout);
+    setDuplicatedClimb({ idx: insertIdx });
+    const t = setTimeout(() => setDuplicatedClimb(null), 5000);
+    setDupUndoTimeout(t);
+  };
+
+  const undoDuplicate = () => {
+    if (!duplicatedClimb) return;
+    const updatedClimbs = dc.climbs.filter((_, i) => i !== duplicatedClimb.idx);
+    updateDC('climbs', updatedClimbs);
+    setDuplicatedClimb(null);
+    clearTimeout(dupUndoTimeout);
   };
 
   const climbForceAvg = (climb) => {
@@ -2757,6 +2772,12 @@ function ClimbView({ selectedDate, setSelectedDate, shiftDate, climbData, setCli
         <div className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 flex items-center gap-3 shadow-xl z-50 text-xs">
           <span className="text-slate-300">Climb removed</span>
           <button onClick={undoDelete} className="text-sky-400 font-semibold hover:text-sky-300">Undo</button>
+        </div>
+      )}
+      {duplicatedClimb && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 flex items-center gap-3 shadow-xl z-50 text-xs">
+          <span className="text-slate-300">Climb duplicated</span>
+          <button onClick={undoDuplicate} className="text-sky-400 font-semibold hover:text-sky-300">Undo</button>
         </div>
       )}
     </div>
