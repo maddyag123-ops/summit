@@ -103,6 +103,7 @@ function generateSampleData() {
     const baseRPE = 6 + Math.sin(i / 5) * 2;
     sample.daily[dateStr] = {
       sleepDuration: (7 + Math.sin(i / 4) * 1.2).toFixed(2),
+      sleepQuality: Math.round(6 + Math.sin(i / 5) * 2),
       motivation: Math.round(6 + Math.sin(i / 6) * 2),
       soreness: Math.round(6 + Math.cos(i / 5) * 2),
       fingerSoreness: Math.round(7 + Math.cos(i / 4) * 2),
@@ -116,8 +117,6 @@ function generateSampleData() {
       }],
       hcTryHardL: (100 + Math.sin(i / 8) * 8).toFixed(1),
       hcTryHardR: (105 + Math.sin(i / 8) * 8).toFixed(1),
-      baselineL: (95 + Math.sin(i / 7) * 6).toFixed(1),
-      baselineR: (98 + Math.sin(i / 7) * 6).toFixed(1),
     };
     sample.climbs[dateStr] = {
       climbs: isRest ? [] : [{
@@ -128,6 +127,8 @@ function generateSampleData() {
         sent: i % 5 === 0,
         outdoor: i % 5 === 0,
       }],
+      baselineL: (95 + Math.sin(i / 7) * 6).toFixed(1),
+      baselineR: (98 + Math.sin(i / 7) * 6).toFixed(1),
       postSessionPeakL: isRest ? '' : (88 + Math.sin(i / 6) * 8).toFixed(1),
       postSessionPeakR: isRest ? '' : (91 + Math.sin(i / 6) * 8).toFixed(1),
     };
@@ -777,13 +778,6 @@ export default function ClimbingTracker() {
 
   const [previewMode, setPreviewMode] = useState(false);
   const sampleData = useMemo(() => generateSampleData(), []);
-  console.log('sampleData:', sampleData);
-  console.log('previewMode at display compute:', previewMode);
-  console.log('[DEBUG] sampleData.daily keys:', Object.keys(sampleData.daily).length);
-  console.log('[DEBUG] sampleData.daily first entry:', JSON.stringify(Object.values(sampleData.daily)[0]));
-  console.log('[DEBUG] sampleData.climbs keys:', Object.keys(sampleData.climbs).length);
-  console.log('[DEBUG] sampleData.climbs first entry:', JSON.stringify(Object.values(sampleData.climbs)[0]));
-  console.log('[DEBUG] sampleData.assess:', JSON.stringify(sampleData.assess));
   const displayDatesSorted = previewMode ? Object.keys(sampleData.daily).sort() : datesSorted;
   const displayDailyData = previewMode ? sampleData.daily : dailyData;
   const displayEwmaData = useMemo(() => previewMode ? computeEWMA(sampleData.daily, displayDatesSorted) : ewmaData, [previewMode, sampleData, displayDatesSorted, ewmaData]);
@@ -1514,7 +1508,6 @@ export default function ClimbingTracker() {
           {dataStatus && <p className={`text-[10px] mt-1.5 font-semibold ${dataStatus.type === "error" ? "text-red-400" : "text-emerald-400"}`}>{dataStatus.msg}</p>}
           {!dataStatus && <p className="text-[10px] text-slate-600 mt-1">{Object.keys(dailyData).length} days logged</p>}
         </div>
-        {console.log('[DEBUG] isAdmin at button render:', isAdmin)}
         {isAdmin && (
           <div className="pt-3 border-t border-slate-800/50">
             <button
@@ -1529,7 +1522,6 @@ export default function ClimbingTracker() {
             </button>
             <button
               onClick={() => {
-                console.log('[DEBUG] Dev preview button clicked');
                 setPreviewMode(p => !p);
                 setShowSettings(false);
               }}
