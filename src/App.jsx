@@ -779,6 +779,11 @@ export default function ClimbingTracker() {
   const sampleData = useMemo(() => generateSampleData(), []);
   console.log('sampleData:', sampleData);
   console.log('previewMode at display compute:', previewMode);
+  console.log('[DEBUG] sampleData.daily keys:', Object.keys(sampleData.daily).length);
+  console.log('[DEBUG] sampleData.daily first entry:', JSON.stringify(Object.values(sampleData.daily)[0]));
+  console.log('[DEBUG] sampleData.climbs keys:', Object.keys(sampleData.climbs).length);
+  console.log('[DEBUG] sampleData.climbs first entry:', JSON.stringify(Object.values(sampleData.climbs)[0]));
+  console.log('[DEBUG] sampleData.assess:', JSON.stringify(sampleData.assess));
   const displayDatesSorted = previewMode ? Object.keys(sampleData.daily).sort() : datesSorted;
   const displayDailyData = previewMode ? sampleData.daily : dailyData;
   const displayEwmaData = useMemo(() => previewMode ? computeEWMA(sampleData.daily, displayDatesSorted) : ewmaData, [previewMode, sampleData, displayDatesSorted, ewmaData]);
