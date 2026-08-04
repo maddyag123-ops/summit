@@ -116,6 +116,20 @@ function generateSampleData() {
       }],
       hcTryHardL: (100 + Math.sin(i / 8) * 8).toFixed(1),
       hcTryHardR: (105 + Math.sin(i / 8) * 8).toFixed(1),
+      baselineL: (95 + Math.sin(i / 7) * 6).toFixed(1),
+      baselineR: (98 + Math.sin(i / 7) * 6).toFixed(1),
+    };
+    sample.climbs[dateStr] = {
+      climbs: isRest ? [] : [{
+        type: i % 2 === 0 ? 'Bouldering' : 'Sport',
+        gradeBoulder: i % 2 === 0 ? 'V6' : '',
+        gradeSport: i % 2 !== 0 ? '5.11c' : '',
+        attempts: String(2 + (i % 4)),
+        sent: i % 5 === 0,
+        outdoor: i % 5 === 0,
+      }],
+      postSessionPeakL: isRest ? '' : (88 + Math.sin(i / 6) * 8).toFixed(1),
+      postSessionPeakR: isRest ? '' : (91 + Math.sin(i / 6) * 8).toFixed(1),
     };
   }
   return sample;
@@ -1478,6 +1492,11 @@ export default function ClimbingTracker() {
               className="w-full py-2 mt-2 text-[10px] text-violet-400 border border-violet-500/30 rounded-lg hover:bg-violet-500/10 transition-all">
               Dev: Preview onboarding
             </button>
+            <button
+              onClick={() => { setPreviewMode(p => !p); setShowSettings(false); }}
+              className="w-full py-2 mt-2 text-[10px] text-violet-400 border border-violet-500/30 rounded-lg hover:bg-violet-500/10 transition-all">
+              Dev: {previewMode ? 'Exit' : 'Force'} sample data preview
+            </button>
           </div>
         )}
       </div>}
@@ -1486,7 +1505,7 @@ export default function ClimbingTracker() {
         {tab === "climbs" && <ClimbView {...{ selectedDate, setSelectedDate, shiftDate, climbData, setClimbData, settings, dailyData, setDailyData, profile, datesSorted }} />}
         {tab === "assess" && <AssessView {...{ assessData, setAssessData, settings, injuryData, setInjuryData, dailyData, ewmaData, datesSorted }} />}
         {tab === "dashboard" && <>
-          {datesSorted.length < 14 && (
+          {(datesSorted.length < 14 || isAdmin) && (
             <button onClick={() => setPreviewMode(p => !p)}
               className={`w-full py-2.5 rounded-xl text-xs font-semibold transition-all mb-3 ${
                 previewMode
