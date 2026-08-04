@@ -132,6 +132,12 @@ function generateSampleData() {
       postSessionPeakR: isRest ? '' : (91 + Math.sin(i / 6) * 8).toFixed(1),
     };
   }
+  const sampleDates = Object.keys(sample.daily).sort();
+  sample.assess = [
+    { date: sampleDates[5], maxHangL: '18', maxHangR: '19', bodyweight: '68' },
+    { date: sampleDates[19], maxHangL: '19.5', maxHangR: '20', bodyweight: '68' },
+    { date: sampleDates[35], maxHangL: '21', maxHangR: '21.5', bodyweight: '67' },
+  ];
   return sample;
 }
 
@@ -774,6 +780,11 @@ export default function ClimbingTracker() {
   const displayDatesSorted = previewMode ? Object.keys(sampleData.daily).sort() : datesSorted;
   const displayDailyData = previewMode ? sampleData.daily : dailyData;
   const displayEwmaData = useMemo(() => previewMode ? computeEWMA(sampleData.daily, displayDatesSorted) : ewmaData, [previewMode, sampleData, displayDatesSorted, ewmaData]);
+  const displayClimbData = previewMode ? sampleData.climbs : climbData;
+  const displayFingerEWMAData = useMemo(() => previewMode
+    ? computeFingerEWMA(sampleData.daily, Object.keys(sampleData.daily).sort())
+    : fingerEWMAData, [previewMode, sampleData, fingerEWMAData]);
+  const displayAssessData = previewMode ? sampleData.assess : assessData;
 
   const loadTrajectory = useMemo(() => {
     const relevantDates = datesSorted.filter(d => d <= selectedDate);
@@ -846,6 +857,22 @@ export default function ClimbingTracker() {
     const total = onWall + offWall;
     return total > 0 ? { onWall: Math.round(onWall / total * 100), offWall: Math.round(offWall / total * 100) } : null;
   }, [dailyData, datesSorted]);
+  const displayWeekOnOffSplit = useMemo(() => previewMode
+    ? (() => {
+        const last7 = Object.keys(sampleData.daily).sort().slice(-7);
+        let onWall = 0, offWall = 0;
+        last7.forEach(d => {
+          const sessions = sampleData.daily[d]?.sessions || [];
+          sessions.forEach(s => {
+            if (!s.sessionDuration || s.sessionType === 'Rest') return;
+            if (FINGER_SESSIONS.includes(s.sessionType)) onWall += Number(s.sessionDuration) || 0;
+            else offWall += Number(s.sessionDuration) || 0;
+          });
+        });
+        const total = onWall + offWall;
+        return total > 0 ? { onWall: Math.round(onWall / total * 100), offWall: Math.round(offWall / total * 100) } : null;
+      })()
+    : weekOnOffSplit, [previewMode, sampleData, weekOnOffSplit]);
   const todayEWMA = ewmaData[selectedDate] || { acute: 0, chronic: 0, ratio: 0 };
 
   const readiness = useMemo(() => {
@@ -1520,7 +1547,7 @@ export default function ClimbingTracker() {
               <span className="text-[10px] text-violet-300 font-semibold">Showing example data, not yours</span>
             </div>
           )}
-          <DashboardView {...{ dailyData: displayDailyData, ewmaData: displayEwmaData, fingerEWMAData, weekOnOffSplit, datesSorted: displayDatesSorted, assessData, climbData }} />
+          <DashboardView {...{ dailyData: displayDailyData, ewmaData: displayEwmaData, fingerEWMAData: displayFingerEWMAData, weekOnOffSplit: displayWeekOnOffSplit, datesSorted: displayDatesSorted, assessData: displayAssessData, climbData: displayClimbData }} />
         </>}
         {tab === "plan" && (
           <div className="flex items-center justify-center h-40 text-slate-600 text-sm">Block system coming soon</div>
