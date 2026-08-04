@@ -1509,6 +1509,7 @@ export default function ClimbingTracker() {
           {dataStatus && <p className={`text-[10px] mt-1.5 font-semibold ${dataStatus.type === "error" ? "text-red-400" : "text-emerald-400"}`}>{dataStatus.msg}</p>}
           {!dataStatus && <p className="text-[10px] text-slate-600 mt-1">{Object.keys(dailyData).length} days logged</p>}
         </div>
+        {console.log('[DEBUG] isAdmin at button render:', isAdmin)}
         {isAdmin && (
           <div className="pt-3 border-t border-slate-800/50">
             <button
@@ -1522,7 +1523,11 @@ export default function ClimbingTracker() {
               Dev: Preview onboarding
             </button>
             <button
-              onClick={() => { setPreviewMode(p => !p); setShowSettings(false); }}
+              onClick={() => {
+                console.log('[DEBUG] Dev preview button clicked');
+                setPreviewMode(p => !p);
+                setShowSettings(false);
+              }}
               className="w-full py-2 mt-2 text-[10px] text-violet-400 border border-violet-500/30 rounded-lg hover:bg-violet-500/10 transition-all">
               Dev: {previewMode ? 'Exit' : 'Force'} sample data preview
             </button>
