@@ -252,7 +252,7 @@ const StylePicker = ({ selected = [], onChange }) => (
     </div>
   </div>
 );
-const WellnessRow = ({ label, value, onChange, lowLabel = "", highLabel = "" }) => (
+const WellnessRow = ({ label, value, onChange, lowLabel = "", highLabel = "", displayReversed = false }) => (
   <div className="space-y-1.5">
     <div className="flex items-center justify-between">
       <span className="text-sm text-slate-300">{label}</span>
@@ -261,7 +261,7 @@ const WellnessRow = ({ label, value, onChange, lowLabel = "", highLabel = "" }) 
     <div className="flex gap-[3px]">
       {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => (
         <button key={v} onClick={() => onChange(v)}
-          className={`flex-1 h-8 rounded text-[10px] font-bold transition-all ${value === v ? (v <= 3 ? "bg-red-500 text-white shadow-lg shadow-red-500/30" : v <= 5 ? "bg-amber-500 text-white shadow-lg shadow-amber-500/30" : v <= 7 ? "bg-sky-500 text-white shadow-lg shadow-sky-500/30" : "bg-emerald-500 text-white shadow-lg shadow-emerald-500/30") : "bg-slate-800/80 text-slate-600 hover:bg-slate-700 border border-slate-700/40"}`}>{v}</button>
+          className={`flex-1 h-8 rounded text-[10px] font-bold transition-all ${value === v ? (v <= 3 ? "bg-red-500 text-white shadow-lg shadow-red-500/30" : v <= 5 ? "bg-amber-500 text-white shadow-lg shadow-amber-500/30" : v <= 7 ? "bg-sky-500 text-white shadow-lg shadow-sky-500/30" : "bg-emerald-500 text-white shadow-lg shadow-emerald-500/30") : "bg-slate-800/80 text-slate-600 hover:bg-slate-700 border border-slate-700/40"}`}>{displayReversed ? 11 - v : v}</button>
       ))}
     </div>
     {(lowLabel || highLabel) && <div className="flex justify-between text-[9px] text-slate-600 px-0.5"><span>{lowLabel}</span><span>{highLabel}</span></div>}
@@ -1951,9 +1951,9 @@ function TodayView({ selectedDate, setSelectedDate, shiftDate, day, updateDay, w
           <div className="space-y-4">
             <WellnessRow label="Sleep Quality" value={day.sleepQuality} onChange={v => updateDay(selectedDate, "sleepQuality", v)} lowLabel="Terrible" highLabel="Excellent" />
             <SleepSlider value={day.sleepDuration} onChange={v => updateDay(selectedDate, "sleepDuration", v)} />
-            <WellnessRow label="Muscle Soreness" value={day.soreness} onChange={v => updateDay(selectedDate, "soreness", v)} lowLabel="Extremely sore" highLabel="No soreness" />
-            <WellnessRow label="Finger Soreness" value={day.fingerSoreness} onChange={v => updateDay(selectedDate, "fingerSoreness", v)} lowLabel="Extremely sore" highLabel="No soreness" />
-            <WellnessRow label="Stress" value={day.stress} onChange={v => updateDay(selectedDate, "stress", v)} lowLabel="Extremely stressed" highLabel="No stress" />
+            <WellnessRow label="Muscle Soreness" value={day.soreness} onChange={v => updateDay(selectedDate, "soreness", v)} lowLabel="Extremely sore" highLabel="No soreness" displayReversed={true} />
+            <WellnessRow label="Finger Soreness" value={day.fingerSoreness} onChange={v => updateDay(selectedDate, "fingerSoreness", v)} lowLabel="Extremely sore" highLabel="No soreness" displayReversed={true} />
+            <WellnessRow label="Stress" value={day.stress} onChange={v => updateDay(selectedDate, "stress", v)} lowLabel="Extremely stressed" highLabel="No stress" displayReversed={true} />
             <WellnessRow label="Motivation" value={day.motivation} onChange={v => updateDay(selectedDate, "motivation", v)} lowLabel="Not motivated at all" highLabel="Extremely motivated" />
           </div>
           {/* Optional HRV */}
