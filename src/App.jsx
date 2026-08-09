@@ -256,7 +256,7 @@ const WellnessRow = ({ label, value, onChange, lowLabel = "", highLabel = "", di
   <div className="space-y-1.5">
     <div className="flex items-center justify-between">
       <span className="text-sm text-slate-300">{label}</span>
-      <span className={`text-xs font-bold font-mono ${!value ? "text-slate-600" : value <= 3 ? "text-red-400" : value <= 5 ? "text-amber-400" : value <= 7 ? "text-sky-400" : "text-emerald-400"}`}>{value || "—"}/10</span>
+      <span className={`text-xs font-bold font-mono ${!value ? "text-slate-600" : value <= 3 ? "text-red-400" : value <= 5 ? "text-amber-400" : value <= 7 ? "text-sky-400" : "text-emerald-400"}`}>{value ? (displayReversed ? 11 - value : value) : "—"}/10</span>
     </div>
     <div className="flex gap-[3px]">
       {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => (
