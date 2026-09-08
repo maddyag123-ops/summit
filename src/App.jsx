@@ -44,6 +44,10 @@ const emptyProfile = () => ({
   onsightGradeSport: "", flashGradeBoulder: "", completed: false, onboardingComplete: false,
   nudgeState: {},
   deloadWeeks: [],
+  lastGapResolvedDate: null,
+  gapBaselineResetUntil: null,
+  lastGapChoice: null,
+  gapDecayRanges: [],
 });
 
 async function loadUserData(userId) {
@@ -66,14 +70,42 @@ const todayStr = () => {
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
+const addDays = (dateStr, days) => {
+  const d = new Date(dateStr + "T12:00:00");
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+};
 const fmtDate = (d) => new Date(d + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 const fmtShort = (d) => new Date(d + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
 const avg = (a, b) => { const na = Number(a) || 0, nb = Number(b) || 0; if (na && nb) return (na + nb) / 2; return na || nb || 0; };
 const pctCalc = (post, bl) => (bl && post) ? Math.round((post / bl) * 100) : null;
 
-function computeEWMA(data, dates) {
+function computeEWMA(data, dates, gapDecayRanges = []) {
   const lA = .25, lC = .069; let a = 0, c = 0, r = {};
-  dates.forEach((d, i) => { const sessions = data[d]?.sessions || []; const allRest = sessions.length > 0 && sessions.every(s => s.sessionType === 'Rest'); const l = allRest ? 0 : (data[d]?.sessionLoad || 0); if (i === 0) { a = l * lA; c = l * lC; } else { a = lA * l + (1 - lA) * a; c = lC * l + (1 - lC) * c; } r[d] = { acute: Math.round(a * 10) / 10, chronic: Math.round(c * 10) / 10, ratio: c > 0 ? Math.round(a / c * 100) / 100 : 0 }; });
+  const inGapRange = (dateStr) => gapDecayRanges.some(({ start, end }) => dateStr > start && dateStr < end);
+  let first = true;
+  let prevDate = null;
+  dates.forEach((d) => {
+    // Apply real decay (load=0) for any calendar day between the previous logged day and this one
+    // that falls inside a confirmed rest gap — all other gaps skip forward undisturbed, as before.
+    if (prevDate) {
+      const cursor = new Date(prevDate + 'T12:00:00');
+      cursor.setDate(cursor.getDate() + 1);
+      const endDate = new Date(d + 'T12:00:00');
+      while (cursor < endDate) {
+        const cursorStr = cursor.toISOString().slice(0, 10);
+        if (inGapRange(cursorStr)) {
+          a = (1 - lA) * a;
+          c = (1 - lC) * c;
+        }
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    }
+    const sessions = data[d]?.sessions || []; const allRest = sessions.length > 0 && sessions.every(s => s.sessionType === 'Rest'); const l = allRest ? 0 : (data[d]?.sessionLoad || 0);
+    if (first) { a = l * lA; c = l * lC; first = false; } else { a = lA * l + (1 - lA) * a; c = lC * l + (1 - lC) * c; }
+    r[d] = { acute: Math.round(a * 10) / 10, chronic: Math.round(c * 10) / 10, ratio: c > 0 ? Math.round(a / c * 100) / 100 : 0 };
+    prevDate = d;
+  });
   return r;
 }
 
@@ -775,7 +807,7 @@ export default function ClimbingTracker() {
   }, [sessionLoad, selectedDate]);
 
   const datesSorted = useMemo(() => Object.keys(dailyData).sort(), [dailyData]);
-  const ewmaData = useMemo(() => computeEWMA(dailyData, datesSorted), [dailyData, datesSorted]);
+  const ewmaData = useMemo(() => computeEWMA(dailyData, datesSorted, profile?.gapDecayRanges), [dailyData, datesSorted, profile?.gapDecayRanges]);
   const fingerEWMAData = useMemo(() => computeFingerEWMA(dailyData, datesSorted), [dailyData, datesSorted]);
 
   const [previewMode, setPreviewMode] = useState(false);
@@ -788,6 +820,29 @@ export default function ClimbingTracker() {
     ? computeFingerEWMA(sampleData.daily, Object.keys(sampleData.daily).sort())
     : fingerEWMAData, [previewMode, sampleData, fingerEWMAData]);
   const displayAssessData = previewMode ? sampleData.assess : assessData;
+
+  const [gapPromptDismissed, setGapPromptDismissed] = useState(false);
+  const daysSinceLastLog = useMemo(() => {
+    if (!datesSorted.length) return 0;
+    const lastLogged = new Date(datesSorted[datesSorted.length - 1]);
+    const today = new Date(todayStr());
+    return Math.round((today - lastLogged) / 86400000);
+  }, [datesSorted]);
+  const showGapPrompt = daysSinceLastLog >= 5 &&
+    (!profile?.lastGapResolvedDate || profile.lastGapResolvedDate < datesSorted[datesSorted.length - 1]) &&
+    !gapPromptDismissed;
+  const resolveGap = (choice) => {
+    const gapStart = datesSorted[datesSorted.length - 1];
+    const gapEnd = todayStr();
+    setProfile(p => ({
+      ...p,
+      lastGapResolvedDate: todayStr(),
+      gapBaselineResetUntil: addDays(todayStr(), 14),
+      lastGapChoice: choice,
+      ...(choice === 'rested' ? { gapDecayRanges: [...(p.gapDecayRanges || []), { start: gapStart, end: gapEnd }] } : {}),
+    }));
+    setGapPromptDismissed(true);
+  };
 
   const loadTrajectory = useMemo(() => {
     const relevantDates = datesSorted.filter(d => d <= selectedDate);
@@ -1490,6 +1545,26 @@ export default function ClimbingTracker() {
           )}
         </div>
       )}
+      {showGapPrompt && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-sm w-full space-y-4">
+            <div className="text-slate-100 font-semibold">Welcome back</div>
+            <div className="text-slate-400 text-sm">
+              It's been {daysSinceLastLog} days since your last log. Did you train during this time?
+            </div>
+            <div className="space-y-2">
+              <button onClick={() => resolveGap('trained')}
+                className="w-full py-2.5 bg-sky-500/20 text-sky-300 border border-sky-500/30 rounded-lg text-sm font-semibold">
+                Yes, I trained but forgot to log
+              </button>
+              <button onClick={() => resolveGap('rested')}
+                className="w-full py-2.5 bg-slate-800 text-slate-300 border border-slate-700 rounded-lg text-sm font-semibold">
+                No, I mostly rested
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
       <header className="sticky top-0 z-50 bg-slate-950/90 backdrop-blur-xl border-b border-slate-800/50">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
@@ -1669,6 +1744,9 @@ function TodayView({ selectedDate, setSelectedDate, shiftDate, day, updateDay, w
   const [showForceInfo, setShowForceInfo] = useState(false);
   const isToday = selectedDate === todayStr();
   const unit = settings.unit || "lbs";
+  const inGapBaselineWindow = !!(profile?.gapBaselineResetUntil && todayStr() < profile.gapBaselineResetUntil);
+  const inBaselineWindow = readiness.isBaseline || inGapBaselineWindow;
+  const gapBaselineDay = inGapBaselineWindow ? 14 - Math.round((new Date(profile.gapBaselineResetUntil) - new Date(todayStr())) / 86400000) : 0;
 
   // getNudge() is called directly in render — re-evaluates on every prop change (day, daySessions, todayEWMA, profile)
   const nudge = getNudge({ readiness, todayEWMA, day, dailyData, datesSorted, selectedDate, settings, profile, assessData });
@@ -1783,12 +1861,15 @@ function TodayView({ selectedDate, setSelectedDate, shiftDate, day, updateDay, w
             </>}
           </div>
         </div>
-        {readiness.isBaseline && (
+        {inBaselineWindow && (
           <div className="mt-2.5 text-[10px] text-slate-500 flex items-center gap-1.5">
-            <Loader size={10} className="animate-spin" /> Baseline: day {readiness.baselineDay}/{BASELINE_DAYS} — flags improve with more data
+            <Loader size={10} className="animate-spin" />
+            {readiness.isBaseline
+              ? <>Baseline: day {readiness.baselineDay}/{BASELINE_DAYS} — flags improve with more data</>
+              : <>Rebuilding baseline: day {gapBaselineDay}/14</>}
           </div>
         )}
-        {!readiness.isBaseline && (
+        {!inBaselineWindow && (
           <div className="mt-1.5 text-[10px] text-slate-600">
             {readiness.baselineDay} days of data to establish baseline
           </div>
