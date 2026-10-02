@@ -39,7 +39,7 @@ async function getAllUsers() {
 }
 
 const emptyProfile = () => ({
-  bodyweight: "", height: "", sex: "", dob: "", dominantHand: "",
+  bodyweight: "", height: "", weightUnit: "", heightUnit: "", sex: "", dob: "", dominantHand: "",
   climbingYears: "", trainingYears: "", discipline: [], disciplinePct: {}, indoorOutdoorSplit: 50,
   onsightGradeSport: "", flashGradeBoulder: "", completed: false, onboardingComplete: false,
   nudgeState: {},
@@ -63,6 +63,10 @@ async function loadUserData(userId) {
 }
 
 // ─── Helpers ───
+const lbsToKg = (lbs) => Number((lbs * 0.453592).toFixed(2));
+const kgToLbs = (kg) => Number((kg / 0.453592).toFixed(2));
+const inToCm = (inches) => Number((inches * 2.54).toFixed(2));
+const cmToIn = (cm) => Number((cm / 2.54).toFixed(2));
 const todayStr = () => {
   const d = new Date();
   const year = d.getFullYear();
@@ -249,10 +253,10 @@ const Badge = ({ children, color = "gray" }) => {
 const Card = ({ children, className = "", onClick }) => (
   <div className={`bg-slate-800/60 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-5 ${onClick ? "cursor-pointer hover:border-slate-600 transition-all" : ""} ${className}`} onClick={onClick}>{children}</div>
 );
-const Input = ({ label, value, onChange, type = "text", placeholder = "", min, max, step, className = "" }) => (
+const Input = ({ label, value, onChange, onBlur, type = "text", inputMode, placeholder = "", min, max, step, className = "" }) => (
   <div className={`flex flex-col gap-1 ${className}`}>
     {label && <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{label}</label>}
-    <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} min={min} max={max} step={step}
+    <input type={type} inputMode={inputMode} value={value} onChange={e => onChange(e.target.value)} onBlur={onBlur ? e => onBlur(e.target.value) : undefined} placeholder={placeholder} min={min} max={max} step={step}
       className="bg-slate-900/60 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/30 placeholder-slate-600 transition-all" />
   </div>
 );
@@ -377,6 +381,26 @@ function ProfileSetupScreen({ profile, setProfile, settings, userId, onClose, on
   const [form, setForm] = useState(() => initForm(profile));
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const unit = settings?.unit || "lbs";
+  const weightUnit = form.weightUnit || settings?.unit || "lbs";
+  const heightUnit = form.heightUnit || "cm";
+  const setWeightUnit = (newUnit) => {
+    setForm(p => {
+      const curUnit = p.weightUnit || settings?.unit || "lbs";
+      if (curUnit === newUnit || !p.bodyweight) return { ...p, weightUnit: newUnit };
+      const n = Number(p.bodyweight);
+      const converted = newUnit === "kg" ? lbsToKg(n) : kgToLbs(n);
+      return { ...p, weightUnit: newUnit, bodyweight: String(converted) };
+    });
+  };
+  const setHeightUnit = (newUnit) => {
+    setForm(p => {
+      const curUnit = p.heightUnit || "cm";
+      if (curUnit === newUnit || !p.height) return { ...p, heightUnit: newUnit };
+      const n = Number(p.height);
+      const converted = newUnit === "cm" ? inToCm(n) : cmToIn(n);
+      return { ...p, heightUnit: newUnit, height: String(converted) };
+    });
+  };
 
   function save() {
     const saved = { ...form, completed: true, ...(isOnboarding ? { onboardingComplete: true } : {}) };
@@ -414,13 +438,29 @@ function ProfileSetupScreen({ profile, setProfile, settings, userId, onClose, on
         <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Physical Stats</div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Bodyweight ({unit})</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Bodyweight</label>
+              <div className="flex gap-0.5 bg-slate-900/60 rounded-md p-0.5 border border-slate-700/40">
+                {["lbs", "kg"].map(u => (
+                  <button key={u} type="button" onClick={() => setWeightUnit(u)}
+                    className={`px-1.5 py-0.5 rounded text-[9px] font-semibold transition-all ${weightUnit === u ? "bg-sky-500/20 text-sky-300" : "text-slate-500 hover:text-slate-300"}`}>{u}</button>
+                ))}
+              </div>
+            </div>
             <p className="text-[10px] text-slate-600 mb-1.5">Used to personalise protein, carb, and hydration targets</p>
             <input type="number" value={form.bodyweight} onChange={e => set("bodyweight", e.target.value)}
               className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 appearance-none" placeholder="—" />
           </div>
           <div>
-            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Height (cm)</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Height</label>
+              <div className="flex gap-0.5 bg-slate-900/60 rounded-md p-0.5 border border-slate-700/40">
+                {["cm", "in"].map(u => (
+                  <button key={u} type="button" onClick={() => setHeightUnit(u)}
+                    className={`px-1.5 py-0.5 rounded text-[9px] font-semibold transition-all ${heightUnit === u ? "bg-sky-500/20 text-sky-300" : "text-slate-500 hover:text-slate-300"}`}>{u}</button>
+                ))}
+              </div>
+            </div>
             <p className="text-[10px] text-slate-600 mb-1.5">Used for BMI context in recovery nudges</p>
             <input type="number" value={form.height} onChange={e => set("height", e.target.value)}
               className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 appearance-none" placeholder="—" />
@@ -1654,9 +1694,14 @@ function nudgeVariants({ profile, assessData, settings }) {
   const recentBodyweight = assessData.length > 0
     ? Number([...assessData].reverse().find(a => a.bodyweight)?.bodyweight) || null
     : null;
-  const bw = Number(profile?.bodyweight) || recentBodyweight || 70;
   const settingsUnit = settings?.unit ?? 'lbs';
-  const bwKg = settingsUnit === 'lbs' ? Math.round(bw * 0.453592 * 10) / 10 : bw;
+  const profileBw = Number(profile?.bodyweight) || null;
+  const profileWeightUnit = profile?.weightUnit || settingsUnit;
+  const bwKg = profileBw
+    ? (profileWeightUnit === 'lbs' ? lbsToKg(profileBw) : profileBw)
+    : recentBodyweight
+      ? (settingsUnit === 'lbs' ? lbsToKg(recentBodyweight) : recentBodyweight)
+      : 70;
   const isMale = profile?.sex === 'Male';
   const age = profile?.dob ? Math.floor((new Date() - new Date(profile.dob)) / (365.25 * 24 * 60 * 60 * 1000)) : null;
   const isMasters = age !== null && age >= 35;
@@ -2074,7 +2119,7 @@ function TodayView({ selectedDate, setSelectedDate, shiftDate, day, updateDay, w
               </div>
               {sess.sessionType !== "Rest" && <div className="flex gap-2 items-end">
                 <Input label="Min" value={sess.sessionDuration} onChange={v => quickUpdateSession(idx, "sessionDuration", v)} type="number" step="10" className="flex-1" />
-                <Input label="RPE" value={sess.sessionRPE} onChange={v => quickUpdateSession(idx, "sessionRPE", String(Math.min(10, Math.max(1, Number(v)))))} type="number" min="1" max="10" className="flex-1" />
+                <Input label="RPE" value={sess.sessionRPE} onChange={v => quickUpdateSession(idx, "sessionRPE", v)} onBlur={v => quickUpdateSession(idx, "sessionRPE", v === "" ? "" : String(Math.min(10, Math.max(1, Number(v) || 1))))} type="number" inputMode="numeric" min="1" max="10" className="flex-1" />
                 {OUTDOOR_SESSION_TYPES.has(sess.sessionType) && <div className="flex flex-col gap-1 pb-0.5">
                   <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Outdoor</label>
                   <button onClick={() => quickUpdateSession(idx, "outdoor", !sess.outdoor)}
@@ -2620,7 +2665,7 @@ function ClimbView({ selectedDate, setSelectedDate, shiftDate, climbData, setCli
             {/* Attempts + RPE */}
             <div className="grid grid-cols-2 gap-2 mb-3">
               <Input label="Attempts" value={climb.attempts} onChange={v => updateClimb(idx, 'attempts', v)} type="number" min="1" />
-              <Input label="RPE (1-10)" value={climb.rpe} onChange={v => updateClimb(idx, 'rpe', String(Math.min(10, Math.max(1, Number(v)))))} type="number" min="1" max="10" />
+              <Input label="RPE (1-10)" value={climb.rpe} onChange={v => updateClimb(idx, 'rpe', v)} onBlur={v => updateClimb(idx, 'rpe', v === "" ? "" : String(Math.min(10, Math.max(1, Number(v) || 1))))} type="number" inputMode="numeric" min="1" max="10" />
             </div>
 
             {/* Sent + Project toggles */}
