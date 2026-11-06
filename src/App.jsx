@@ -7,12 +7,16 @@ import { supabase } from './supabase';
 async function dbGet(table, userId, fallback) {
   try {
     const { data, error } = await supabase.from(table).select('data').eq('user_id', userId).maybeSingle();
-    if (error) throw error;
-    return data?.data ?? fallback;
-  } catch { return fallback; }
+    if (error && error.code !== 'PGRST116') throw error;
+    return { data: data?.data ?? fallback, failed: false };
+  } catch (e) {
+    console.error(`DB load error (${table}):`, e);
+    return { data: fallback, failed: true };
+  }
 }
 
-async function dbSet(table, userId, value) {
+async function dbSet(table, userId, value, failedTables = []) {
+  if (failedTables.includes(table)) return false;
   try {
     const { error } = await supabase.from(table).upsert({ user_id: userId, data: value }, { onConflict: 'user_id' });
     if (error) throw error;
@@ -51,7 +55,8 @@ const emptyProfile = () => ({
 });
 
 async function loadUserData(userId) {
-  const [daily, climbs, assess, injury, sett, prof] = await Promise.all([
+  const TABLES = ['daily_logs', 'climb_logs', 'assessments', 'injury_logs', 'settings', 'athlete_data'];
+  const results = await Promise.all([
     dbGet('daily_logs', userId, {}),
     dbGet('climb_logs', userId, {}),
     dbGet('assessments', userId, []),
@@ -59,7 +64,9 @@ async function loadUserData(userId) {
     dbGet('settings', userId, { instrument: 'Tindeq', unit: 'lbs' }),
     dbGet('athlete_data', userId, emptyProfile()),
   ]);
-  return { daily, climbs, assess, injury, settings: sett, profile: prof };
+  const [daily, climbs, assess, injury, sett, prof] = results.map(r => r.data);
+  const failedTables = TABLES.filter((_, i) => results[i].failed);
+  return { daily, climbs, assess, injury, settings: sett, profile: prof, failedTables };
 }
 
 // ─── Helpers ───
@@ -621,6 +628,8 @@ export default function ClimbingTracker() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(1);
   const [dataStatus, setDataStatus] = useState(null);
+  const [failedTables, setFailedTables] = useState([]);
+  const failedTablesRef = useRef([]);
   const initialized = useRef(false);
   const saveTimers = useRef({});
 
@@ -639,7 +648,6 @@ export default function ClimbingTracker() {
         const adminFlag = session.user.user_metadata?.isAdmin === true;
         setIsAdmin(adminFlag);
         setAuthReady(true);
-        console.log('[Auth] authReady set, adminFlag:', adminFlag, 'raw metadata:', session?.user?.user_metadata);
         setUserId(uid);
         setLoading(true);
         const name = await getProfile(uid);
@@ -682,6 +690,9 @@ export default function ClimbingTracker() {
         setTimeout(() => reject(new Error("timeout")), 6000)
       );
       const data = await Promise.race([loadUserData(uid), timeout]);
+      const failed = data.failedTables || [];
+      setFailedTables(failed);
+      failedTablesRef.current = failed;
       // Clean up stale Rest sessions that have leftover duration/RPE from before the fix
       const cleanedDaily = {};
       for (const [date, dayVal] of Object.entries(data.daily || {})) {
@@ -702,32 +713,41 @@ export default function ClimbingTracker() {
       const hadStaleData = Object.keys(cleanedDaily).some(
         date => data.daily[date] !== cleanedDaily[date]
       );
-      if (hadStaleData) dbSet('daily_logs', uid, cleanedDaily);
+      if (hadStaleData) dbSet('daily_logs', uid, cleanedDaily, failed);
       setClimbData(data.climbs);
       setAssessData(data.assess);
       setInjuryData(data.injury);
       setSettings({ instrument: 'Tindeq', unit: 'lbs', ...data.settings });
       let prof = data.profile;
-      // Strip stale _lastKey from nudgeState (written by an older version)
-      if (prof.nudgeState && '_lastKey' in prof.nudgeState) {
-        const { _lastKey, ...rest } = prof.nudgeState;
-        prof = { ...prof, nudgeState: rest };
-      }
-      // Migrate discipline from old string format to array
-      if (typeof prof.discipline === "string") {
-        const d = prof.discipline;
-        prof = { ...prof, discipline: d === "All" ? ["Bouldering", "Sport", "Trad", "Speed"] : d ? [d] : [] };
-      }
-      // Existing user who completed old profile setup — mark onboarding done, no overlay
-      if (prof.completed && !prof.onboardingComplete) {
-        prof = { ...prof, onboardingComplete: true };
+      if (!failed.includes('athlete_data')) {
+        // Strip stale _lastKey from nudgeState (written by an older version)
+        if (prof.nudgeState && '_lastKey' in prof.nudgeState) {
+          const { _lastKey, ...rest } = prof.nudgeState;
+          prof = { ...prof, nudgeState: rest };
+        }
+        // Migrate discipline from old string format to array
+        if (typeof prof.discipline === "string") {
+          const d = prof.discipline;
+          prof = { ...prof, discipline: d === "All" ? ["Bouldering", "Sport", "Trad", "Speed"] : d ? [d] : [] };
+        }
+        // Existing user who completed old profile setup — mark onboarding done, no overlay
+        if (prof.completed && !prof.onboardingComplete) {
+          prof = { ...prof, onboardingComplete: true };
+        }
       }
       setProfile(prof);
 
-      if (prof !== data.profile) dbSet('athlete_data', uid, prof);
-      if (!prof.onboardingComplete) {
-        setShowOnboarding(true);
-        setOnboardingStep(1);
+      if (!failed.includes('athlete_data')) {
+        if (prof !== data.profile) dbSet('athlete_data', uid, prof, failed);
+        if (!prof.onboardingComplete) {
+          setShowOnboarding(true);
+          setOnboardingStep(1);
+        }
+      }
+      // When athlete_data failed, the full-screen error state (rendered elsewhere) handles it —
+      // no onboarding, no setup screen. Otherwise, warn if any other table failed to load.
+      if (!failed.includes('athlete_data') && failed.length > 0) {
+        showStatus("error", "Some data did not load. Refresh before logging.");
       }
       initialized.current = true;
     } catch {
@@ -765,7 +785,11 @@ export default function ClimbingTracker() {
     const table = TABLE_MAP[key]; if (!table) return;
     clearTimeout(saveTimers.current[key]);
     saveTimers.current[key] = setTimeout(async () => {
-      const ok = await dbSet(table, userId, value);
+      if (failedTablesRef.current.includes(table)) {
+        showStatus("error", "Not saved because this data did not load. Refresh and try again.");
+        return;
+      }
+      const ok = await dbSet(table, userId, value, failedTablesRef.current);
       if (!ok) showStatus("error", "Save failed — check your connection");
     }, 500);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1511,6 +1535,24 @@ export default function ClimbingTracker() {
     </div>
   );
 
+  if (failedTables.includes('athlete_data')) return (
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+      <div className="text-center space-y-6 max-w-sm w-full">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-red-500 to-amber-500 flex items-center justify-center mx-auto"><AlertTriangle size={32} className="text-white" /></div>
+        <div>
+          <h1 className="text-xl font-bold text-slate-200">We could not load your profile</h1>
+          <p className="text-sm text-slate-500 mt-1">Your data is safe. Check your connection and try again.</p>
+        </div>
+        <div className="space-y-2">
+          <button onClick={() => loadDataForUser(userId)}
+            className="w-full py-3 rounded-xl text-sm font-semibold bg-sky-500 text-white hover:bg-sky-600 transition-all">Retry</button>
+          <button onClick={handleSignOut}
+            className="w-full py-2.5 rounded-xl text-sm font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700 transition-all">Sign Out</button>
+        </div>
+      </div>
+    </div>
+  );
+
   if (!profile.completed) return <ProfileSetupScreen profile={profile} setProfile={setProfile} settings={settings} userId={userId} />;
 
   const completeOnboarding = () => {
@@ -1679,7 +1721,6 @@ export default function ClimbingTracker() {
       <nav className="fixed bottom-0 left-0 right-0 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800/50 z-50">
         <div className="max-w-2xl mx-auto flex">
           {navTabs.map(t => <button key={t.id} onClick={() => setTab(t.id)} className={`flex-1 py-2.5 flex flex-col items-center gap-0.5 transition-colors ${tab === t.id ? "text-sky-400" : "text-slate-600 hover:text-slate-400"}`}><t.icon size={20} strokeWidth={tab === t.id ? 2.5 : 1.5} /><span className="text-[10px] font-medium">{t.label}</span></button>)}
-          {console.log('[Nav] authReady:', authReady, 'isAdmin:', isAdmin)}
           {authReady && isAdmin && <button onClick={() => setTab("coach")} className={`flex-1 py-2.5 flex flex-col items-center gap-0.5 transition-colors ${tab === "coach" ? "text-sky-400" : "text-slate-600 hover:text-slate-400"}`}><Users size={20} strokeWidth={tab === "coach" ? 2.5 : 1.5} /><span className="text-[10px] font-medium">Coach</span></button>}
         </div>
       </nav>
