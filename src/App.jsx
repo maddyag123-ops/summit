@@ -276,6 +276,7 @@ const INJURY_REGIONS = [
   { key: "hand", label: "Hand", hasSide: true },
   { key: "abdomen", label: "Abs", hasSide: false },
   { key: "upper_back", label: "Upper Back", hasSide: true },
+  { key: "mid_back", label: "Mid back", hasSide: true },
   { key: "lower_back", label: "Lower Back", hasSide: true },
   { key: "hip", label: "Hip", hasSide: true },
   { key: "thigh", label: "Thigh", hasSide: true },
@@ -378,10 +379,12 @@ const BODY_FRONT_SHAPES = [
 ];
 
 const BODY_BACK_EXCLUSIVE_SHAPES = [
-  { region: "upper_back", side: "L", kind: "rect", cx: 90, cy: 120, w: 18, h: 30 },
-  { region: "upper_back", side: "R", kind: "rect", cx: 110, cy: 120, w: 18, h: 30 },
-  { region: "lower_back", side: "L", kind: "rect", cx: 90, cy: 156, w: 16, h: 26 },
-  { region: "lower_back", side: "R", kind: "rect", cx: 110, cy: 156, w: 16, h: 26 },
+  { region: "upper_back", side: "L", kind: "rect", cx: 93, cy: 89, w: 16, h: 26 },
+  { region: "upper_back", side: "R", kind: "rect", cx: 107, cy: 89, w: 16, h: 26 },
+  { region: "mid_back", side: "L", kind: "rect", cx: 93, cy: 124, w: 16, h: 22 },
+  { region: "mid_back", side: "R", kind: "rect", cx: 107, cy: 124, w: 16, h: 22 },
+  { region: "lower_back", side: "L", kind: "rect", cx: 93, cy: 158, w: 14, h: 22 },
+  { region: "lower_back", side: "R", kind: "rect", cx: 107, cy: 158, w: 14, h: 22 },
   { region: "elbow_outer", side: "R", kind: "ellipse", cx: 139, cy: 138, rx: 10, ry: 9 },
   { region: "elbow_outer", side: "L", kind: "ellipse", cx: 61, cy: 138, rx: 10, ry: 9 },
   { region: "forearm_extensor", side: "R", kind: "rect", cx: 139, cy: 175, w: 16, h: 55 },
@@ -478,7 +481,7 @@ function InjurySiteList({ value, onChange }) {
             </button>
           );
         }
-        const showBoth = region.key === "upper_back" || region.key === "lower_back";
+        const showBoth = region.key === "upper_back" || region.key === "mid_back" || region.key === "lower_back";
         return (
           <div key={region.key} className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-slate-900/40 border border-slate-700/30">
             <span className="text-xs text-slate-400">{region.label}</span>
