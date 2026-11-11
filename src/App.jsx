@@ -328,6 +328,157 @@ const siteLabel = (site) => {
     .replace(/^./, c => c.toUpperCase());
 };
 
+// ─── Injury Body Map (Stage 2 — map + list pickers) ───
+// Shape geometry lives in a 200×410 viewBox. cx/cy mark the center of each
+// region; ellipses use rx/ry, rects use w/h (drawn centered on cx/cy).
+// Anatomical convention: in a FRONT view the subject faces the viewer, so
+// the subject's right side renders on the viewer's left (smaller cx) — in a
+// BACK view the subject has turned around, so the subject's right side
+// renders on the viewer's right (larger cx). BODY_BACK_SHAPES is derived by
+// mirroring the front shapes shared between both views (cx -> 200 - cx),
+// which automatically keeps this convention correct without hand-copying
+// coordinates twice.
+const SHARED_BODY_REGIONS = new Set(["neck", "shoulder", "upper_arm", "wrist", "hand", "hip", "thigh", "knee", "shin_calf", "ankle", "foot"]);
+
+const BODY_FRONT_SHAPES = [
+  { region: "neck", side: null, kind: "rect", cx: 100, cy: 49, w: 24, h: 14 },
+  { region: "shoulder", side: "R", kind: "ellipse", cx: 65, cy: 68, rx: 16, ry: 11 },
+  { region: "shoulder", side: "L", kind: "ellipse", cx: 135, cy: 68, rx: 16, ry: 11 },
+  { region: "upper_arm", side: "R", kind: "rect", cx: 61, cy: 105, w: 18, h: 55 },
+  { region: "upper_arm", side: "L", kind: "rect", cx: 139, cy: 105, w: 18, h: 55 },
+  { region: "elbow_inner", side: "R", kind: "ellipse", cx: 61, cy: 138, rx: 10, ry: 9 },
+  { region: "elbow_inner", side: "L", kind: "ellipse", cx: 139, cy: 138, rx: 10, ry: 9 },
+  { region: "forearm_flexor", side: "R", kind: "rect", cx: 61, cy: 175, w: 16, h: 55 },
+  { region: "forearm_flexor", side: "L", kind: "rect", cx: 139, cy: 175, w: 16, h: 55 },
+  { region: "wrist", side: "R", kind: "ellipse", cx: 61, cy: 210, rx: 9, ry: 7 },
+  { region: "wrist", side: "L", kind: "ellipse", cx: 139, cy: 210, rx: 9, ry: 7 },
+  { region: "hand", side: "R", kind: "ellipse", cx: 61, cy: 233, rx: 11, ry: 16 },
+  { region: "hand", side: "L", kind: "ellipse", cx: 139, cy: 233, rx: 11, ry: 16 },
+  { region: "hip", side: "R", kind: "ellipse", cx: 82, cy: 248, rx: 13, ry: 10 },
+  { region: "hip", side: "L", kind: "ellipse", cx: 118, cy: 248, rx: 13, ry: 10 },
+  { region: "thigh", side: "R", kind: "rect", cx: 83, cy: 285, w: 26, h: 55 },
+  { region: "thigh", side: "L", kind: "rect", cx: 117, cy: 285, w: 26, h: 55 },
+  { region: "knee", side: "R", kind: "ellipse", cx: 83, cy: 320, rx: 11, ry: 9 },
+  { region: "knee", side: "L", kind: "ellipse", cx: 117, cy: 320, rx: 11, ry: 9 },
+  { region: "shin_calf", side: "R", kind: "rect", cx: 83, cy: 354, w: 20, h: 48 },
+  { region: "shin_calf", side: "L", kind: "rect", cx: 117, cy: 354, w: 20, h: 48 },
+  { region: "ankle", side: "R", kind: "ellipse", cx: 83, cy: 382, rx: 9, ry: 6 },
+  { region: "ankle", side: "L", kind: "ellipse", cx: 117, cy: 382, rx: 9, ry: 6 },
+  { region: "foot", side: "R", kind: "ellipse", cx: 83, cy: 395, rx: 13, ry: 7 },
+  { region: "foot", side: "L", kind: "ellipse", cx: 117, cy: 395, rx: 13, ry: 7 },
+];
+
+const BODY_BACK_EXCLUSIVE_SHAPES = [
+  { region: "upper_back", side: null, kind: "rect", cx: 100, cy: 108, w: 50, h: 45 },
+  { region: "lower_back", side: null, kind: "rect", cx: 100, cy: 152, w: 44, h: 35 },
+  { region: "elbow_outer", side: "R", kind: "ellipse", cx: 139, cy: 138, rx: 10, ry: 9 },
+  { region: "elbow_outer", side: "L", kind: "ellipse", cx: 61, cy: 138, rx: 10, ry: 9 },
+  { region: "forearm_extensor", side: "R", kind: "rect", cx: 139, cy: 175, w: 16, h: 55 },
+  { region: "forearm_extensor", side: "L", kind: "rect", cx: 61, cy: 175, w: 16, h: 55 },
+];
+
+const BODY_BACK_SHAPES = [
+  ...BODY_FRONT_SHAPES.filter(s => SHARED_BODY_REGIONS.has(s.region)).map(s => ({ ...s, cx: 200 - s.cx })),
+  ...BODY_BACK_EXCLUSIVE_SHAPES,
+];
+
+function InjuryBodyMap({ value, onChange }) {
+  const [mapView, setMapView] = useState("front");
+  const shapes = mapView === "front" ? BODY_FRONT_SHAPES : BODY_BACK_SHAPES;
+  const isSelected = (shape) => !!value && value.region === shape.region && value.side === shape.side;
+  const handleTap = (shape) => onChange({ region: shape.region, side: shape.side, finger: null, structure: null });
+  const leftLabel = mapView === "front" ? "R" : "L";
+  const rightLabel = mapView === "front" ? "L" : "R";
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-1 bg-slate-900/60 rounded-lg p-0.5 border border-slate-700/40 w-fit mx-auto">
+        {["front", "back"].map(v => (
+          <button key={v} type="button" onClick={() => setMapView(v)}
+            className={`px-3 py-1 rounded-md text-[10px] font-semibold capitalize transition-all ${mapView === v ? "bg-sky-500/20 text-sky-300" : "text-slate-500 hover:text-slate-300"}`}>{v}</button>
+        ))}
+      </div>
+      <svg viewBox="0 0 200 410" className="w-full max-w-[220px] mx-auto block select-none" style={{ touchAction: "manipulation" }}>
+        <circle cx="100" cy="25" r="20" fill="#1e293b" stroke="#334155" strokeWidth="1.5" />
+        <rect x="78" y="58" width="44" height="164" rx="12" fill="#1e293b" stroke="#334155" strokeWidth="1.5" />
+        <text x="25" y="72" fontSize="15" fontWeight="700" fill="#64748b" textAnchor="middle">{leftLabel}</text>
+        <text x="175" y="72" fontSize="15" fontWeight="700" fill="#64748b" textAnchor="middle">{rightLabel}</text>
+        {shapes.map((s, i) => {
+          const selected = isSelected(s);
+          const fill = selected ? "#38bdf8" : "#475569";
+          const stroke = selected ? "#0ea5e9" : "#334155";
+          return (
+            <g key={i} onClick={() => handleTap(s)} style={{ cursor: "pointer" }}>
+              {/* Invisible hit area, radius 16 viewBox units — comfortably over a 44px tap
+                  target once this SVG renders at its intended ~220-280px display width. */}
+              <circle cx={s.cx} cy={s.cy} r={16} fill="transparent" />
+              {s.kind === "ellipse"
+                ? <ellipse cx={s.cx} cy={s.cy} rx={s.rx} ry={s.ry} fill={fill} stroke={stroke} strokeWidth="1.5" opacity={selected ? 1 : 0.85} />
+                : <rect x={s.cx - s.w / 2} y={s.cy - s.h / 2} width={s.w} height={s.h} rx={4} fill={fill} stroke={stroke} strokeWidth="1.5" opacity={selected ? 1 : 0.85} />}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function InjurySiteList({ value, onChange }) {
+  return (
+    <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
+      {INJURY_REGIONS.map(region => {
+        if (!region.hasSide) {
+          const selected = !!value && value.region === region.key;
+          return (
+            <button key={region.key} type="button"
+              onClick={() => onChange({ region: region.key, side: null, finger: null, structure: null })}
+              className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-all ${selected ? "bg-sky-500/20 text-sky-300 border border-sky-500/30" : "bg-slate-900/40 text-slate-400 border border-slate-700/30 hover:border-slate-600"}`}>
+              {region.label}
+            </button>
+          );
+        }
+        return (
+          <div key={region.key} className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-slate-900/40 border border-slate-700/30">
+            <span className="text-xs text-slate-400">{region.label}</span>
+            <div className="flex gap-1">
+              {["L", "R"].map(side => {
+                const selected = !!value && value.region === region.key && value.side === side;
+                return (
+                  <button key={side} type="button"
+                    onClick={() => onChange({ region: region.key, side, finger: null, structure: null })}
+                    className={`w-7 h-7 rounded-md text-[10px] font-bold transition-all ${selected ? "bg-sky-500 text-white" : "bg-slate-800 text-slate-500 hover:bg-slate-700"}`}>{side}</button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function InjurySitePicker({ value, onChange }) {
+  const [tab, setTab] = useState("map");
+  const label = siteLabel(value);
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-1 bg-slate-900/50 rounded-lg p-0.5 border border-slate-700/40">
+        {[{ id: "map", label: "Body Map" }, { id: "list", label: "List" }].map(t => (
+          <button key={t.id} type="button" onClick={() => setTab(t.id)}
+            className={`flex-1 py-1.5 rounded-md text-[10px] font-semibold transition-all ${tab === t.id ? "bg-slate-700/60 text-white" : "text-slate-500 hover:text-slate-300"}`}>{t.label}</button>
+        ))}
+      </div>
+      {tab === "map" ? <InjuryBodyMap value={value} onChange={onChange} /> : <InjurySiteList value={value} onChange={onChange} />}
+      {label && (
+        <div className="flex items-center justify-between bg-sky-500/10 border border-sky-500/20 rounded-lg px-3 py-2">
+          <span className="text-xs text-sky-300 font-medium">{label}</span>
+          <button type="button" onClick={() => onChange(null)} className="text-[10px] text-slate-500 hover:text-red-400 font-semibold">Clear</button>
+        </div>
+      )}
+      <p className="text-[10px] text-slate-600">Site is self-reported and is not a diagnosis.</p>
+    </div>
+  );
+}
+
 // ─── Constants ───
 const SPORT_GRADES = ["5.6", "5.7", "5.8", "5.9", "5.10a", "5.10b", "5.10c", "5.10d", "5.11a", "5.11b", "5.11c", "5.11d", "5.12a", "5.12b", "5.12c", "5.12d", "5.13a", "5.13b", "5.13c", "5.13d", "5.14a", "5.14b", "5.14c", "5.14d", "5.15a", "5.15b", "5.15c"];
 const BOULDER_GRADES = ["V0", "V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "V9", "V10", "V11", "V12", "V13", "V14", "V15", "V16"];
@@ -3137,10 +3288,20 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
   const [view, setView] = useState("log");
   const [chartAxis, setChartAxis] = useState("load"); // "load" or "rpe"
   const [isNewCondition, setIsNewCondition] = useState(false);
+  const hasAnyPain = (e) => [e.lThumb, e.lIndex, e.lMiddle, e.lRing, e.lPinky, e.rThumb, e.rIndex, e.rMiddle, e.rRing, e.rPinky, e.elbowL, e.elbowR, e.shoulderL, e.shoulderR, e.legL, e.legR].some(v => (v || 0) > 0);
+  const [painExpanded, setPainExpanded] = useState(() => hasAnyPain(form));
 
   useEffect(() => {
     if (openNew) { setForm({ ...emptyInjury(), date: todayStr() }); setEditing(null); setView("log"); setIsNewCondition(false); if (onOpenNewHandled) onOpenNewHandled(); }
   }, [openNew]);
+
+  // Reset the pain-sliders collapse state whenever the entry being edited changes
+  // (null -> an index, or back to null) — matches the entry's own pain data at that
+  // moment. Doesn't fight further manual toggling by the user within the same entry.
+  useEffect(() => {
+    setPainExpanded(hasAnyPain(form));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing]);
 
   const saveNew = () => { setInjuryData(p => [...p, form]); setForm({ ...emptyInjury(), date: todayStr(), condition: form.condition }); setEditing(null); };
   const saveEdit = () => { if (editing !== null) setInjuryData(p => p.map((x, i) => i === editing ? form : x)); setForm({ ...emptyInjury(), date: todayStr() }); setEditing(null); };
@@ -3250,22 +3411,31 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
             <Input label="New Condition Name" value={form.condition} onChange={v => setForm(p => ({ ...p, condition: v }))} placeholder="e.g., Left A2 pulley" className="mb-3" />
           )}
           <p className="text-[10px] text-slate-600 mb-4">Same name = tracked together over time</p>
-          <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">Left Hand</div>
-          <div className="space-y-1.5 mb-4">{[["lThumb", "Thumb"], ["lIndex", "Index"], ["lMiddle", "Middle"], ["lRing", "Ring"], ["lPinky", "Pinky"]].map(([k, l]) => <PainSlider key={k} label={l} value={form[k]} onChange={v => setForm(p => ({ ...p, [k]: v }))} />)}</div>
-          <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">Right Hand</div>
-          <div className="space-y-1.5 mb-4">{[["rThumb", "Thumb"], ["rIndex", "Index"], ["rMiddle", "Middle"], ["rRing", "Ring"], ["rPinky", "Pinky"]].map(([k, l]) => <PainSlider key={k} label={l} value={form[k]} onChange={v => setForm(p => ({ ...p, [k]: v }))} />)}</div>
-          <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">Elbow & Shoulder</div>
-          <div className="space-y-1.5 mb-4">
-            <PainSlider label="Elbow L" value={form.elbowL} onChange={v => setForm(p => ({ ...p, elbowL: v }))} />
-            <PainSlider label="Elbow R" value={form.elbowR} onChange={v => setForm(p => ({ ...p, elbowR: v }))} />
-            <PainSlider label="Shoulder L" value={form.shoulderL} onChange={v => setForm(p => ({ ...p, shoulderL: v }))} />
-            <PainSlider label="Shoulder R" value={form.shoulderR} onChange={v => setForm(p => ({ ...p, shoulderR: v }))} />
-          </div>
-          <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">Leg</div>
-          <div className="space-y-1.5 mb-4">
-            <PainSlider label="Leg L" value={form.legL} onChange={v => setForm(p => ({ ...p, legL: v }))} />
-            <PainSlider label="Leg R" value={form.legR} onChange={v => setForm(p => ({ ...p, legR: v }))} />
-          </div>
+          <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Where is it?</div>
+          <div className="mb-4"><InjurySitePicker value={form.site} onChange={site => setForm(p => ({ ...p, site }))} /></div>
+          <button type="button" onClick={() => setPainExpanded(p => !p)}
+            className="w-full flex items-center justify-between text-[10px] text-slate-500 uppercase tracking-wider mb-3">
+            <span>Pain by Body Part</span>
+            {painExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+          {painExpanded && <>
+            <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">Left Hand</div>
+            <div className="space-y-1.5 mb-4">{[["lThumb", "Thumb"], ["lIndex", "Index"], ["lMiddle", "Middle"], ["lRing", "Ring"], ["lPinky", "Pinky"]].map(([k, l]) => <PainSlider key={k} label={l} value={form[k]} onChange={v => setForm(p => ({ ...p, [k]: v }))} />)}</div>
+            <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">Right Hand</div>
+            <div className="space-y-1.5 mb-4">{[["rThumb", "Thumb"], ["rIndex", "Index"], ["rMiddle", "Middle"], ["rRing", "Ring"], ["rPinky", "Pinky"]].map(([k, l]) => <PainSlider key={k} label={l} value={form[k]} onChange={v => setForm(p => ({ ...p, [k]: v }))} />)}</div>
+            <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">Elbow & Shoulder</div>
+            <div className="space-y-1.5 mb-4">
+              <PainSlider label="Elbow L" value={form.elbowL} onChange={v => setForm(p => ({ ...p, elbowL: v }))} />
+              <PainSlider label="Elbow R" value={form.elbowR} onChange={v => setForm(p => ({ ...p, elbowR: v }))} />
+              <PainSlider label="Shoulder L" value={form.shoulderL} onChange={v => setForm(p => ({ ...p, shoulderL: v }))} />
+              <PainSlider label="Shoulder R" value={form.shoulderR} onChange={v => setForm(p => ({ ...p, shoulderR: v }))} />
+            </div>
+            <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">Leg</div>
+            <div className="space-y-1.5 mb-4">
+              <PainSlider label="Leg L" value={form.legL} onChange={v => setForm(p => ({ ...p, legL: v }))} />
+              <PainSlider label="Leg R" value={form.legR} onChange={v => setForm(p => ({ ...p, legR: v }))} />
+            </div>
+          </>}
           {flags.length > 0 && <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 mb-3 flex items-center gap-2"><AlertTriangle size={16} className="text-red-400 shrink-0" /><span className="text-xs text-red-400 font-medium">{flags.join(" • ")}</span></div>}
           <Input label="Location Details" value={form.details} onChange={v => setForm(p => ({ ...p, details: v }))} placeholder="e.g., A2 pulley left ring" className="mb-3" />
           <Input label="Notes / Action Plan" value={form.notes} onChange={v => setForm(p => ({ ...p, notes: v }))} placeholder="Rest, tape, physio..." className="mb-3" />
@@ -3286,6 +3456,7 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
               <div>
                 <div className="text-sm font-semibold">{e.date ? fmtDate(e.date) : "Entry"}</div>
                 {e.condition && <div className="text-[10px] text-slate-500 mt-0.5">{e.condition}</div>}
+                {siteLabel(e.site) && <div className="text-[10px] text-sky-400/80 mt-0.5">{siteLabel(e.site)}</div>}
               </div>
               <div className="flex items-center gap-2">
                 <Badge color={mp >= 5 ? "red" : mp >= 3 ? "yellow" : "green"}>Max: {mp}/10</Badge>
@@ -3364,6 +3535,7 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
                   {cond.resolved && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-semibold">Resolved</span>}
                 </div>
                 <div className="text-[10px] text-slate-500">{cond.daysActive} days · {cond.entries.length} entries · {activeParts.length} areas</div>
+                {siteLabel(cond.entries[cond.entries.length - 1]?.site) && <div className="text-[10px] text-sky-400/80 mt-0.5">{siteLabel(cond.entries[cond.entries.length - 1]?.site)}</div>}
               </div>
               <div className="text-right">
                 {!cond.resolved && <Badge color={cond.currentPain >= 5 ? "red" : cond.currentPain >= 3 ? "yellow" : "green"}>Now: {cond.currentPain}/10</Badge>}
