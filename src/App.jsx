@@ -136,7 +136,7 @@ function computeFingerEWMA(data, dates) {
 }
 
 function generateSampleData() {
-  const sample = { daily: {}, climbs: {}, assess: [], injury: {} };
+  const sample = { daily: {}, climbs: {}, assess: [], injury: [] };
   const today = new Date();
   for (let i = 41; i >= 0; i--) {
     const d = new Date(today);
@@ -183,6 +183,35 @@ function generateSampleData() {
     { date: sampleDates[5], maxHang: '18', bodyweight: '68' },
     { date: sampleDates[19], maxHang: '19.5', bodyweight: '68' },
     { date: sampleDates[35], maxHang: '21', bodyweight: '67' },
+  ];
+  sample.injury = [
+    {
+      ...emptyInjury(),
+      date: sampleDates[8],
+      condition: 'Left ring A2 pulley',
+      lRing: 6,
+      site: { region: 'hand', side: 'L', finger: 'ring', structure: 'a2' },
+      details: 'A2 pulley strain, ring finger',
+      notes: 'Taping, reduced crimping intensity',
+    },
+    {
+      ...emptyInjury(),
+      date: sampleDates[22],
+      condition: 'Left ring A2 pulley',
+      lRing: 3,
+      site: { region: 'hand', side: 'L', finger: 'ring', structure: 'a2' },
+      details: 'A2 pulley strain, ring finger',
+      notes: 'Improving, light crimping tolerated',
+    },
+    {
+      ...emptyInjury(),
+      date: sampleDates[30],
+      condition: 'Right knee',
+      legR: 4,
+      site: { region: 'knee', side: 'R' },
+      details: 'Knee soreness after a bouldering fall',
+      notes: 'Icing, mobility work',
+    },
   ];
   return sample;
 }
@@ -231,7 +260,73 @@ const emptyDay = () => ({ sleepQuality: "", sleepDuration: "", soreness: "", fin
 const emptySession = () => ({ sessionType: "", sessionDuration: "", sessionRPE: "", notes: "", outdoor: false });
 const emptyClimb = () => ({ route: "", type: "", gradeSport: "", gradeBoulder: "", styles: [], sendType: "", wallAngle: "", rpe: "", attempts: "", moves: "", sent: false, isProject: false, instrument: "Tindeq", tindeqGripType: "Half Crimp", tindeqIntensity: "Try Hard", postHC50L: "", postHC50R: "", postHCTHL: "", postHCTHR: "", postOH50L: "", postOH50R: "", postOHTHL: "", postOHTHR: "", postRFDL: "", postRFDR: "", postGripL: "", postGripR: "", notes: "" });
 const emptyAssess = () => ({ date: "", bodyweight: "", maxHang: "", weightedPullup: "", tindeqGripType: "Half Crimp", tindeqIntensity: "Try Hard", tindeqHC50L: "", tindeqHC50R: "", tindeqHCTHL: "", tindeqHCTHR: "", tindeqOH50L: "", tindeqOH50R: "", tindeqOHTHL: "", tindeqOHTHR: "", tindeqRFDL: "", tindeqRFDR: "", criticalForce: "", gripL: "", gripR: "", shoulderRatio: "", notes: "" });
-const emptyInjury = () => ({ date: "", condition: "", lThumb: 0, lIndex: 0, lMiddle: 0, lRing: 0, lPinky: 0, rThumb: 0, rIndex: 0, rMiddle: 0, rRing: 0, rPinky: 0, elbowL: 0, elbowR: 0, shoulderL: 0, shoulderR: 0, legL: 0, legR: 0, details: "", notes: "" });
+const emptyInjury = () => ({ date: "", condition: "", lThumb: 0, lIndex: 0, lMiddle: 0, lRing: 0, lPinky: 0, rThumb: 0, rIndex: 0, rMiddle: 0, rRing: 0, rPinky: 0, elbowL: 0, elbowR: 0, shoulderL: 0, shoulderR: 0, legL: 0, legR: 0, details: "", notes: "", site: null });
+
+// ─── Injury Body Map (Stage 1 — data layer) ───
+const INJURY_REGIONS = [
+  { key: "neck", label: "Neck", hasSide: false },
+  { key: "shoulder", label: "Shoulder", hasSide: true },
+  { key: "upper_arm", label: "Upper Arm", hasSide: true },
+  { key: "elbow_inner", label: "Elbow (Inner)", hasSide: true },
+  { key: "elbow_outer", label: "Elbow (Outer)", hasSide: true },
+  { key: "forearm_flexor", label: "Forearm (Flexor)", hasSide: true },
+  { key: "forearm_extensor", label: "Forearm (Extensor)", hasSide: true },
+  { key: "wrist", label: "Wrist", hasSide: true },
+  { key: "hand", label: "Hand", hasSide: true },
+  { key: "upper_back", label: "Upper Back", hasSide: false },
+  { key: "lower_back", label: "Lower Back", hasSide: false },
+  { key: "hip", label: "Hip", hasSide: true },
+  { key: "thigh", label: "Thigh", hasSide: true },
+  { key: "knee", label: "Knee", hasSide: true },
+  { key: "shin_calf", label: "Shin/Calf", hasSide: true },
+  { key: "ankle", label: "Ankle", hasSide: true },
+  { key: "foot", label: "Foot", hasSide: true },
+];
+
+const HAND_FINGERS = [
+  { key: "thumb", label: "Thumb" },
+  { key: "index", label: "Index" },
+  { key: "middle", label: "Middle" },
+  { key: "ring", label: "Ring" },
+  { key: "little", label: "Little" },
+];
+
+const FINGER_STRUCTURES = {
+  thumb: [
+    { key: "mcp", label: "MCP", sentence: "MCP joint" },
+    { key: "ip", label: "IP", sentence: "IP joint" },
+    { key: "flexor_tendon", label: "Flexor Tendon", sentence: "flexor tendon" },
+    { key: "collateral", label: "Collateral Ligament", sentence: "collateral ligament" },
+  ],
+  _default: [
+    { key: "a2", label: "A2 Pulley", sentence: "A2 pulley" },
+    { key: "a4", label: "A4 Pulley", sentence: "A4 pulley" },
+    { key: "flexor_tendon", label: "Flexor Tendon", sentence: "flexor tendon" },
+    { key: "lumbrical", label: "Lumbrical", sentence: "lumbrical" },
+    { key: "collateral", label: "Collateral Ligament", sentence: "collateral ligament" },
+    { key: "pip", label: "PIP", sentence: "PIP joint" },
+    { key: "dip", label: "DIP", sentence: "DIP joint" },
+    { key: "mcp", label: "MCP", sentence: "MCP joint" },
+  ],
+};
+const fingerStructuresFor = (fingerKey) => FINGER_STRUCTURES[fingerKey] || FINGER_STRUCTURES._default;
+
+const siteLabel = (site) => {
+  if (!site || !site.region) return null;
+  const region = INJURY_REGIONS.find(r => r.key === site.region);
+  if (!region) return null;
+  const sideLabel = site.side === "L" ? "Left" : site.side === "R" ? "Right" : "";
+  if (site.region === "hand" && site.finger) {
+    const finger = HAND_FINGERS.find(f => f.key === site.finger);
+    const fingerLabel = finger ? `${finger.label.toLowerCase()} finger` : "finger";
+    const structures = fingerStructuresFor(site.finger);
+    const structure = site.structure ? structures.find(s => s.key === site.structure) : null;
+    const base = [sideLabel, fingerLabel].filter(Boolean).join(" ");
+    return structure ? `${base}, ${structure.sentence}` : base;
+  }
+  return [sideLabel, region.label.toLowerCase()].filter(Boolean).join(" ")
+    .replace(/^./, c => c.toUpperCase());
+};
 
 // ─── Constants ───
 const SPORT_GRADES = ["5.6", "5.7", "5.8", "5.9", "5.10a", "5.10b", "5.10c", "5.10d", "5.11a", "5.11b", "5.11c", "5.11d", "5.12a", "5.12b", "5.12c", "5.12d", "5.13a", "5.13b", "5.13c", "5.13d", "5.14a", "5.14b", "5.14c", "5.14d", "5.15a", "5.15b", "5.15c"];
@@ -3231,6 +3326,8 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
             { key: "elbowR", label: "R Elbow", color: "#fb923c" },
             { key: "shoulderL", label: "L Shoulder", color: "#2dd4bf" },
             { key: "shoulderR", label: "R Shoulder", color: "#38bdf8" },
+            { key: "legL", label: "L Leg", color: "#fde047" },
+            { key: "legR", label: "R Leg", color: "#fb7185" },
           ];
           // Find which body parts have any non-zero pain in this condition's entries
           const activeParts = PARTS.filter(p => cond.entries.some(e => (e[p.key] || 0) > 0));
@@ -3502,7 +3599,7 @@ function CoachView({ coachUsers, currentUser, loadUserData, coachViewUser, setCo
   const activeInjuries = (coachData.injury || []).filter(e => e.condition).reduce((acc, e) => {
     const c = e.condition.trim();
     if (!acc[c]) acc[c] = { pain: 0, date: e.date };
-    const mp = Math.max(e.lThumb||0,e.lIndex||0,e.lMiddle||0,e.lRing||0,e.lPinky||0,e.rThumb||0,e.rIndex||0,e.rMiddle||0,e.rRing||0,e.rPinky||0,e.elbowL||0,e.elbowR||0,e.shoulderL||0,e.shoulderR||0);
+    const mp = Math.max(e.lThumb||0,e.lIndex||0,e.lMiddle||0,e.lRing||0,e.lPinky||0,e.rThumb||0,e.rIndex||0,e.rMiddle||0,e.rRing||0,e.rPinky||0,e.elbowL||0,e.elbowR||0,e.shoulderL||0,e.shoulderR||0,e.legL||0,e.legR||0);
     if (e.date >= (acc[c].date || "")) { acc[c] = { pain: mp, date: e.date }; }
     return acc;
   }, {});
