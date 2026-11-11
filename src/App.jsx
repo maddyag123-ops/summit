@@ -266,6 +266,7 @@ const emptyInjury = () => ({ date: "", condition: "", lThumb: 0, lIndex: 0, lMid
 const INJURY_REGIONS = [
   { key: "neck", label: "Neck", hasSide: false },
   { key: "shoulder", label: "Shoulder", hasSide: true },
+  { key: "chest", label: "Chest (pec)", hasSide: true },
   { key: "upper_arm", label: "Upper Arm", hasSide: true },
   { key: "elbow_inner", label: "Elbow (Inner)", hasSide: true },
   { key: "elbow_outer", label: "Elbow (Outer)", hasSide: true },
@@ -273,6 +274,7 @@ const INJURY_REGIONS = [
   { key: "forearm_extensor", label: "Forearm (Extensor)", hasSide: true },
   { key: "wrist", label: "Wrist", hasSide: true },
   { key: "hand", label: "Hand", hasSide: true },
+  { key: "abdomen", label: "Abs", hasSide: false },
   { key: "upper_back", label: "Upper Back", hasSide: false },
   { key: "lower_back", label: "Lower Back", hasSide: false },
   { key: "hip", label: "Hip", hasSide: true },
@@ -281,6 +283,7 @@ const INJURY_REGIONS = [
   { key: "shin_calf", label: "Shin/Calf", hasSide: true },
   { key: "ankle", label: "Ankle", hasSide: true },
   { key: "foot", label: "Foot", hasSide: true },
+  { key: "other", label: "Other", hasSide: false },
 ];
 
 const HAND_FINGERS = [
@@ -315,6 +318,7 @@ const siteLabel = (site) => {
   if (!site || !site.region) return null;
   const region = INJURY_REGIONS.find(r => r.key === site.region);
   if (!region) return null;
+  if (site.region === "other") return site.other ? `Other: ${site.other}` : "Other";
   const sideLabel = site.side === "L" ? "Left" : site.side === "R" ? "Right" : "";
   if (site.region === "hand" && site.finger) {
     const finger = HAND_FINGERS.find(f => f.key === site.finger);
@@ -344,6 +348,11 @@ const BODY_FRONT_SHAPES = [
   { region: "neck", side: null, kind: "rect", cx: 100, cy: 49, w: 24, h: 14 },
   { region: "shoulder", side: "R", kind: "ellipse", cx: 65, cy: 68, rx: 16, ry: 11 },
   { region: "shoulder", side: "L", kind: "ellipse", cx: 135, cy: 68, rx: 16, ry: 11 },
+  // Front-only — chest and abdomen are never mirrored onto the back view because
+  // their region keys are deliberately absent from SHARED_BODY_REGIONS below.
+  { region: "chest", side: "R", kind: "ellipse", cx: 82, cy: 100, rx: 15, ry: 18 },
+  { region: "chest", side: "L", kind: "ellipse", cx: 118, cy: 100, rx: 15, ry: 18 },
+  { region: "abdomen", side: null, kind: "ellipse", cx: 100, cy: 175, rx: 22, ry: 28 },
   { region: "upper_arm", side: "R", kind: "rect", cx: 61, cy: 105, w: 18, h: 55 },
   { region: "upper_arm", side: "L", kind: "rect", cx: 139, cy: 105, w: 18, h: 55 },
   { region: "elbow_inner", side: "R", kind: "ellipse", cx: 61, cy: 138, rx: 10, ry: 9 },
@@ -382,7 +391,9 @@ const BODY_BACK_SHAPES = [
   ...BODY_BACK_EXCLUSIVE_SHAPES,
 ];
 
-function InjuryBodyMap({ value, onChange }) {
+const HAIR_COLOR = "#f59e0b"; // amber — chosen to contrast against the dark slate head/background
+
+function InjuryBodyMap({ value, onChange, onSelectOther }) {
   const [mapView, setMapView] = useState("front");
   const shapes = mapView === "front" ? BODY_FRONT_SHAPES : BODY_BACK_SHAPES;
   const isSelected = (shape) => !!value && value.region === shape.region && value.side === shape.side;
@@ -400,6 +411,22 @@ function InjuryBodyMap({ value, onChange }) {
       <svg viewBox="0 0 200 410" className="w-full max-w-[220px] mx-auto block select-none" style={{ touchAction: "manipulation" }}>
         <circle cx="100" cy="25" r="20" fill="#1e293b" stroke="#334155" strokeWidth="1.5" />
         <rect x="78" y="58" width="44" height="164" rx="12" fill="#1e293b" stroke="#334155" strokeWidth="1.5" />
+        {/* Decorative face/hair — purely cosmetic, excluded from hit-testing and not
+            part of BODY_FRONT_SHAPES/BODY_BACK_SHAPES, so it never mirrors or clicks. */}
+        <g pointer-events="none" aria-hidden="true">
+          {mapView === "front" ? (
+            <>
+              <path d="M 85 11 Q 100 1 115 11 Q 108 6 100 7 Q 92 6 85 11 Z" fill={HAIR_COLOR} />
+              <circle cx="93" cy="23" r="1.6" fill="#e2e8f0" />
+              <circle cx="107" cy="23" r="1.6" fill="#e2e8f0" />
+              <circle cx="88" cy="29" r="2.4" fill="#fca5a5" opacity="0.55" />
+              <circle cx="112" cy="29" r="2.4" fill="#fca5a5" opacity="0.55" />
+              <path d="M 93 28 Q 100 31 107 28" stroke="#e2e8f0" strokeWidth="1.3" fill="none" strokeLinecap="round" />
+            </>
+          ) : (
+            <path d="M 81 28 Q 78 3 100 2 Q 122 3 119 28 Q 119 9 100 8 Q 81 9 81 28 Z" fill={HAIR_COLOR} />
+          )}
+        </g>
         <text x="25" y="72" fontSize="15" fontWeight="700" fill="#64748b" textAnchor="middle">{leftLabel}</text>
         <text x="175" y="72" fontSize="15" fontWeight="700" fill="#64748b" textAnchor="middle">{rightLabel}</text>
         {shapes.map((s, i) => {
@@ -418,6 +445,12 @@ function InjuryBodyMap({ value, onChange }) {
           );
         })}
       </svg>
+      {onSelectOther && (
+        <button type="button" onClick={onSelectOther}
+          className={`block mx-auto px-3 py-1 rounded-md text-[10px] font-semibold transition-all ${value?.region === "other" ? "bg-sky-500/20 text-sky-300" : "bg-slate-900/40 text-slate-500 border border-slate-700/30 hover:border-slate-600"}`}>
+          Other
+        </button>
+      )}
     </div>
   );
 }
@@ -430,7 +463,9 @@ function InjurySiteList({ value, onChange }) {
           const selected = !!value && value.region === region.key;
           return (
             <button key={region.key} type="button"
-              onClick={() => onChange({ region: region.key, side: null, finger: null, structure: null })}
+              onClick={() => onChange(region.key === "other"
+                ? { region: "other", side: null, finger: null, structure: null, other: "" }
+                : { region: region.key, side: null, finger: null, structure: null })}
               className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-all ${selected ? "bg-sky-500/20 text-sky-300 border border-sky-500/30" : "bg-slate-900/40 text-slate-400 border border-slate-700/30 hover:border-slate-600"}`}>
               {region.label}
             </button>
@@ -459,6 +494,7 @@ function InjurySiteList({ value, onChange }) {
 function InjurySitePicker({ value, onChange }) {
   const [tab, setTab] = useState("map");
   const label = siteLabel(value);
+  const selectOther = () => onChange({ region: "other", side: null, finger: null, structure: null, other: "" });
   return (
     <div className="space-y-2">
       <div className="flex gap-1 bg-slate-900/50 rounded-lg p-0.5 border border-slate-700/40">
@@ -467,7 +503,13 @@ function InjurySitePicker({ value, onChange }) {
             className={`flex-1 py-1.5 rounded-md text-[10px] font-semibold transition-all ${tab === t.id ? "bg-slate-700/60 text-white" : "text-slate-500 hover:text-slate-300"}`}>{t.label}</button>
         ))}
       </div>
-      {tab === "map" ? <InjuryBodyMap value={value} onChange={onChange} /> : <InjurySiteList value={value} onChange={onChange} />}
+      {tab === "map" ? <InjuryBodyMap value={value} onChange={onChange} onSelectOther={selectOther} /> : <InjurySiteList value={value} onChange={onChange} />}
+      {value?.region === "other" && (
+        <input type="text" maxLength={40} value={value.other || ""}
+          onChange={e => onChange({ ...value, other: e.target.value.slice(0, 40) })}
+          placeholder="Describe the location (max 40 chars)"
+          className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50" />
+      )}
       {label && (
         <div className="flex items-center justify-between bg-sky-500/10 border border-sky-500/20 rounded-lg px-3 py-2">
           <span className="text-xs text-sky-300 font-medium">{label}</span>
