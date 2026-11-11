@@ -275,8 +275,8 @@ const INJURY_REGIONS = [
   { key: "wrist", label: "Wrist", hasSide: true },
   { key: "hand", label: "Hand", hasSide: true },
   { key: "abdomen", label: "Abs", hasSide: false },
-  { key: "upper_back", label: "Upper Back", hasSide: false },
-  { key: "lower_back", label: "Lower Back", hasSide: false },
+  { key: "upper_back", label: "Upper Back", hasSide: true },
+  { key: "lower_back", label: "Lower Back", hasSide: true },
   { key: "hip", label: "Hip", hasSide: true },
   { key: "thigh", label: "Thigh", hasSide: true },
   { key: "knee", label: "Knee", hasSide: true },
@@ -350,8 +350,8 @@ const BODY_FRONT_SHAPES = [
   { region: "shoulder", side: "L", kind: "ellipse", cx: 135, cy: 68, rx: 16, ry: 11 },
   // Front-only — chest and abdomen are never mirrored onto the back view because
   // their region keys are deliberately absent from SHARED_BODY_REGIONS below.
-  { region: "chest", side: "R", kind: "ellipse", cx: 82, cy: 100, rx: 15, ry: 18 },
-  { region: "chest", side: "L", kind: "ellipse", cx: 118, cy: 100, rx: 15, ry: 18 },
+  { region: "chest", side: "R", kind: "polygon", cx: 90, cy: 91, points: "80,80 101,84 98,101 80,98" },
+  { region: "chest", side: "L", kind: "polygon", cx: 110, cy: 91, points: "120,80 99,84 102,101 120,98" },
   { region: "abdomen", side: null, kind: "ellipse", cx: 100, cy: 175, rx: 22, ry: 28 },
   { region: "upper_arm", side: "R", kind: "rect", cx: 61, cy: 105, w: 18, h: 55 },
   { region: "upper_arm", side: "L", kind: "rect", cx: 139, cy: 105, w: 18, h: 55 },
@@ -378,8 +378,10 @@ const BODY_FRONT_SHAPES = [
 ];
 
 const BODY_BACK_EXCLUSIVE_SHAPES = [
-  { region: "upper_back", side: null, kind: "rect", cx: 100, cy: 108, w: 50, h: 45 },
-  { region: "lower_back", side: null, kind: "rect", cx: 100, cy: 152, w: 44, h: 35 },
+  { region: "upper_back", side: "L", kind: "rect", cx: 90, cy: 120, w: 18, h: 30 },
+  { region: "upper_back", side: "R", kind: "rect", cx: 110, cy: 120, w: 18, h: 30 },
+  { region: "lower_back", side: "L", kind: "rect", cx: 90, cy: 156, w: 16, h: 26 },
+  { region: "lower_back", side: "R", kind: "rect", cx: 110, cy: 156, w: 16, h: 26 },
   { region: "elbow_outer", side: "R", kind: "ellipse", cx: 139, cy: 138, rx: 10, ry: 9 },
   { region: "elbow_outer", side: "L", kind: "ellipse", cx: 61, cy: 138, rx: 10, ry: 9 },
   { region: "forearm_extensor", side: "R", kind: "rect", cx: 139, cy: 175, w: 16, h: 55 },
@@ -396,7 +398,10 @@ const HAIR_COLOR = "#f59e0b"; // amber — chosen to contrast against the dark s
 function InjuryBodyMap({ value, onChange, onSelectOther }) {
   const [mapView, setMapView] = useState("front");
   const shapes = mapView === "front" ? BODY_FRONT_SHAPES : BODY_BACK_SHAPES;
-  const isSelected = (shape) => !!value && value.region === shape.region && value.side === shape.side;
+  // value.side === null with a shape whose own side isn't null means a "Both" selection
+  // (or an old upper_back/lower_back entry from before these regions had sides) — highlight
+  // every half for that region rather than none.
+  const isSelected = (shape) => !!value && value.region === shape.region && (value.side === shape.side || (value.side === null && shape.side !== null));
   const handleTap = (shape) => onChange({ region: shape.region, side: shape.side, finger: null, structure: null });
   const leftLabel = mapView === "front" ? "R" : "L";
   const rightLabel = mapView === "front" ? "L" : "R";
@@ -440,7 +445,9 @@ function InjuryBodyMap({ value, onChange, onSelectOther }) {
               <circle cx={s.cx} cy={s.cy} r={16} fill="transparent" />
               {s.kind === "ellipse"
                 ? <ellipse cx={s.cx} cy={s.cy} rx={s.rx} ry={s.ry} fill={fill} stroke={stroke} strokeWidth="1.5" opacity={selected ? 1 : 0.85} />
-                : <rect x={s.cx - s.w / 2} y={s.cy - s.h / 2} width={s.w} height={s.h} rx={4} fill={fill} stroke={stroke} strokeWidth="1.5" opacity={selected ? 1 : 0.85} />}
+                : s.kind === "polygon"
+                  ? <polygon points={s.points} fill={fill} stroke={stroke} strokeWidth="1.5" opacity={selected ? 1 : 0.85} />
+                  : <rect x={s.cx - s.w / 2} y={s.cy - s.h / 2} width={s.w} height={s.h} rx={4} fill={fill} stroke={stroke} strokeWidth="1.5" opacity={selected ? 1 : 0.85} />}
             </g>
           );
         })}
@@ -471,6 +478,7 @@ function InjurySiteList({ value, onChange }) {
             </button>
           );
         }
+        const showBoth = region.key === "upper_back" || region.key === "lower_back";
         return (
           <div key={region.key} className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-slate-900/40 border border-slate-700/30">
             <span className="text-xs text-slate-400">{region.label}</span>
@@ -483,6 +491,14 @@ function InjurySiteList({ value, onChange }) {
                     className={`w-7 h-7 rounded-md text-[10px] font-bold transition-all ${selected ? "bg-sky-500 text-white" : "bg-slate-800 text-slate-500 hover:bg-slate-700"}`}>{side}</button>
                 );
               })}
+              {showBoth && (() => {
+                const selected = !!value && value.region === region.key && value.side === null;
+                return (
+                  <button type="button"
+                    onClick={() => onChange({ region: region.key, side: null, finger: null, structure: null })}
+                    className={`px-2 h-7 rounded-md text-[9px] font-bold transition-all ${selected ? "bg-sky-500 text-white" : "bg-slate-800 text-slate-500 hover:bg-slate-700"}`}>Both</button>
+                );
+              })()}
             </div>
           </div>
         );
