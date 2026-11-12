@@ -398,7 +398,7 @@ const BODY_BACK_SHAPES = [
 
 const HAIR_COLOR = "#f59e0b"; // amber — chosen to contrast against the dark slate head/background
 
-function InjuryBodyMap({ value, onChange, onSelectOther }) {
+function InjuryBodyMap({ value, onChange }) {
   const [mapView, setMapView] = useState("front");
   const shapes = mapView === "front" ? BODY_FRONT_SHAPES : BODY_BACK_SHAPES;
   // value.side === null with a shape whose own side isn't null means a "Both" selection
@@ -455,12 +455,6 @@ function InjuryBodyMap({ value, onChange, onSelectOther }) {
           );
         })}
       </svg>
-      {onSelectOther && (
-        <button type="button" onClick={onSelectOther}
-          className={`block mx-auto px-3 py-1 rounded-md text-[10px] font-semibold transition-all ${value?.region === "other" ? "bg-sky-500/20 text-sky-300" : "bg-slate-900/40 text-slate-500 border border-slate-700/30 hover:border-slate-600"}`}>
-          Other
-        </button>
-      )}
     </div>
   );
 }
@@ -469,13 +463,12 @@ function InjurySiteList({ value, onChange }) {
   return (
     <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
       {INJURY_REGIONS.map(region => {
+        if (region.key === "other") return null; // handled by the shared control in InjurySitePicker
         if (!region.hasSide) {
           const selected = !!value && value.region === region.key;
           return (
             <button key={region.key} type="button"
-              onClick={() => onChange(region.key === "other"
-                ? { region: "other", side: null, finger: null, structure: null, other: "" }
-                : { region: region.key, side: null, finger: null, structure: null })}
+              onClick={() => onChange({ region: region.key, side: null, finger: null, structure: null })}
               className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-all ${selected ? "bg-sky-500/20 text-sky-300 border border-sky-500/30" : "bg-slate-900/40 text-slate-400 border border-slate-700/30 hover:border-slate-600"}`}>
               {region.label}
             </button>
@@ -513,22 +506,30 @@ function InjurySiteList({ value, onChange }) {
 function InjurySitePicker({ value, onChange }) {
   const [tab, setTab] = useState("map");
   const label = siteLabel(value);
-  const selectOther = () => onChange({ region: "other", side: null, finger: null, structure: null, other: "" });
+  const isOther = value?.region === "other";
+  const toggleOther = () => {
+    if (isOther) onChange(null);
+    else onChange({ region: "other", side: null, finger: null, structure: null, other: "" });
+  };
   return (
     <div className="space-y-2">
+      <button type="button" onClick={toggleOther}
+        className={`w-full py-2.5 rounded-lg text-xs font-semibold border transition-all ${isOther ? "bg-sky-500/20 text-sky-300 border-sky-500/30" : "bg-slate-900/40 text-slate-400 border-slate-700/30 hover:border-slate-600"}`}>
+        Other / not on the map
+      </button>
+      {isOther && (
+        <input type="text" maxLength={40} value={value.other || ""}
+          onChange={e => onChange({ ...value, other: e.target.value.slice(0, 40) })}
+          placeholder="e.g. ribs, jaw"
+          className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50" />
+      )}
       <div className="flex gap-1 bg-slate-900/50 rounded-lg p-0.5 border border-slate-700/40">
         {[{ id: "map", label: "Body Map" }, { id: "list", label: "List" }].map(t => (
           <button key={t.id} type="button" onClick={() => setTab(t.id)}
             className={`flex-1 py-1.5 rounded-md text-[10px] font-semibold transition-all ${tab === t.id ? "bg-slate-700/60 text-white" : "text-slate-500 hover:text-slate-300"}`}>{t.label}</button>
         ))}
       </div>
-      {tab === "map" ? <InjuryBodyMap value={value} onChange={onChange} onSelectOther={selectOther} /> : <InjurySiteList value={value} onChange={onChange} />}
-      {value?.region === "other" && (
-        <input type="text" maxLength={40} value={value.other || ""}
-          onChange={e => onChange({ ...value, other: e.target.value.slice(0, 40) })}
-          placeholder="Describe the location (max 40 chars)"
-          className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50" />
-      )}
+      {tab === "map" ? <InjuryBodyMap value={value} onChange={onChange} /> : <InjurySiteList value={value} onChange={onChange} />}
       {label && (
         <div className="flex items-center justify-between bg-sky-500/10 border border-sky-500/20 rounded-lg px-3 py-2">
           <span className="text-xs text-sky-300 font-medium">{label}</span>
