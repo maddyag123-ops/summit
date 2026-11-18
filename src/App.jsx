@@ -190,6 +190,7 @@ function generateSampleData() {
       date: sampleDates[8],
       condition: 'Left ring A2 pulley',
       lRing: 6,
+      pain: 6,
       site: { region: 'hand', side: 'L', finger: 'ring', structure: 'a2' },
       details: 'A2 pulley strain, ring finger',
       notes: 'Taping, reduced crimping intensity',
@@ -199,6 +200,7 @@ function generateSampleData() {
       date: sampleDates[22],
       condition: 'Left ring A2 pulley',
       lRing: 3,
+      pain: 3,
       site: { region: 'hand', side: 'L', finger: 'ring', structure: 'a2' },
       details: 'A2 pulley strain, ring finger',
       notes: 'Improving, light crimping tolerated',
@@ -208,6 +210,7 @@ function generateSampleData() {
       date: sampleDates[30],
       condition: 'Right knee',
       legR: 4,
+      pain: 4,
       site: { region: 'knee', side: 'R' },
       details: 'Knee soreness after a bouldering fall',
       notes: 'Icing, mobility work',
@@ -260,7 +263,7 @@ const emptyDay = () => ({ sleepQuality: "", sleepDuration: "", soreness: "", fin
 const emptySession = () => ({ sessionType: "", sessionDuration: "", sessionRPE: "", notes: "", outdoor: false });
 const emptyClimb = () => ({ route: "", type: "", gradeSport: "", gradeBoulder: "", styles: [], sendType: "", wallAngle: "", rpe: "", attempts: "", moves: "", sent: false, isProject: false, instrument: "Tindeq", tindeqGripType: "Half Crimp", tindeqIntensity: "Try Hard", postHC50L: "", postHC50R: "", postHCTHL: "", postHCTHR: "", postOH50L: "", postOH50R: "", postOHTHL: "", postOHTHR: "", postRFDL: "", postRFDR: "", postGripL: "", postGripR: "", notes: "" });
 const emptyAssess = () => ({ date: "", bodyweight: "", maxHang: "", weightedPullup: "", tindeqGripType: "Half Crimp", tindeqIntensity: "Try Hard", tindeqHC50L: "", tindeqHC50R: "", tindeqHCTHL: "", tindeqHCTHR: "", tindeqOH50L: "", tindeqOH50R: "", tindeqOHTHL: "", tindeqOHTHR: "", tindeqRFDL: "", tindeqRFDR: "", criticalForce: "", gripL: "", gripR: "", shoulderRatio: "", notes: "" });
-const emptyInjury = () => ({ date: "", condition: "", lThumb: 0, lIndex: 0, lMiddle: 0, lRing: 0, lPinky: 0, rThumb: 0, rIndex: 0, rMiddle: 0, rRing: 0, rPinky: 0, elbowL: 0, elbowR: 0, shoulderL: 0, shoulderR: 0, legL: 0, legR: 0, details: "", notes: "", site: null });
+const emptyInjury = () => ({ date: "", condition: "", lThumb: 0, lIndex: 0, lMiddle: 0, lRing: 0, lPinky: 0, rThumb: 0, rIndex: 0, rMiddle: 0, rRing: 0, rPinky: 0, elbowL: 0, elbowR: 0, shoulderL: 0, shoulderR: 0, legL: 0, legR: 0, details: "", notes: "", site: null, pain: 0 });
 
 // ─── Injury Body Map (Stage 1 — data layer) ───
 const INJURY_REGIONS = [
@@ -397,6 +400,7 @@ const BODY_BACK_SHAPES = [
 ];
 
 const HAIR_COLOR = "#f59e0b"; // amber — chosen to contrast against the dark slate head/background
+const PAIN_COLOR = "#f472b6"; // pink — distinct from every existing per-part chart color
 
 function InjuryBodyMap({ value, onChange }) {
   const [mapView, setMapView] = useState("front");
@@ -503,7 +507,7 @@ function InjurySiteList({ value, onChange }) {
   );
 }
 
-function InjurySitePicker({ value, onChange }) {
+function InjurySitePicker({ value, onChange, children }) {
   const [tab, setTab] = useState("map");
   const label = siteLabel(value);
   const isOther = value?.region === "other";
@@ -536,6 +540,7 @@ function InjurySitePicker({ value, onChange }) {
           <button type="button" onClick={() => onChange(null)} className="text-[10px] text-slate-500 hover:text-red-400 font-semibold">Clear</button>
         </div>
       )}
+      {children}
       <p className="text-[10px] text-slate-600">Site is self-reported and is not a diagnosis.</p>
     </div>
   );
@@ -637,13 +642,16 @@ const SleepSlider = ({ value, onChange }) => {
     </div>
   );
 };
-const PainSlider = ({ label, value, onChange }) => (
-  <div className="flex items-center gap-2">
-    <span className="text-xs text-slate-400 w-16 shrink-0">{label}</span>
-    <input type="range" min={0} max={10} value={value} onChange={e => onChange(parseInt(e.target.value))}
-      className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer accent-red-500"
-      style={{ background: `linear-gradient(to right, ${value === 0 ? '#334155' : value <= 3 ? '#22c55e' : value <= 6 ? '#eab308' : '#ef4444'} ${value * 10}%, #334155 ${value * 10}%)` }} />
-    <span className={`text-xs font-bold w-5 text-right ${value === 0 ? "text-slate-600" : value <= 3 ? "text-emerald-400" : value <= 6 ? "text-amber-400" : "text-red-400"}`}>{value}</span>
+const PainSlider = ({ label, value, onChange, lowLabel = "", highLabel = "" }) => (
+  <div className="space-y-1">
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-slate-400 w-16 shrink-0">{label}</span>
+      <input type="range" min={0} max={10} value={value} onChange={e => onChange(parseInt(e.target.value))}
+        className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer accent-red-500"
+        style={{ background: `linear-gradient(to right, ${value === 0 ? '#334155' : value <= 3 ? '#22c55e' : value <= 6 ? '#eab308' : '#ef4444'} ${value * 10}%, #334155 ${value * 10}%)` }} />
+      <span className={`text-xs font-bold w-5 text-right ${value === 0 ? "text-slate-600" : value <= 3 ? "text-emerald-400" : value <= 6 ? "text-amber-400" : "text-red-400"}`}>{value}</span>
+    </div>
+    {(lowLabel || highLabel) && <div className="flex justify-between text-[9px] text-slate-600 pl-[72px]"><span>{lowLabel}</span><span>{highLabel}</span></div>}
   </div>
 );
 const InstrumentToggle = ({ value, onChange }) => (
@@ -3374,8 +3382,9 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
   if (Math.max(form.elbowL, form.elbowR) >= 3) flags.push("Elbow ≥3");
   if (Math.max(form.shoulderL, form.shoulderR) >= 3) flags.push("Shoulder ≥3");
   if (Math.max(form.legL || 0, form.legR || 0) >= 3) flags.push("Leg ≥3");
+  if ((form.pain || 0) >= 3) flags.push("Pain ≥3");
 
-  const maxPainOfEntry = (e) => Math.max(e.lThumb || 0, e.lIndex || 0, e.lMiddle || 0, e.lRing || 0, e.lPinky || 0, e.rThumb || 0, e.rIndex || 0, e.rMiddle || 0, e.rRing || 0, e.rPinky || 0, e.elbowL || 0, e.elbowR || 0, e.shoulderL || 0, e.shoulderR || 0, e.legL || 0, e.legR || 0);
+  const maxPainOfEntry = (e) => Math.max(e.lThumb || 0, e.lIndex || 0, e.lMiddle || 0, e.lRing || 0, e.lPinky || 0, e.rThumb || 0, e.rIndex || 0, e.rMiddle || 0, e.rRing || 0, e.rPinky || 0, e.elbowL || 0, e.elbowR || 0, e.shoulderL || 0, e.shoulderR || 0, e.legL || 0, e.legR || 0, e.pain || 0);
 
   // Existing condition names for dropdown
   const existingConditions = useMemo(() => {
@@ -3474,10 +3483,14 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
           )}
           <p className="text-[10px] text-slate-600 mb-4">Same name = tracked together over time</p>
           <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Where is it?</div>
-          <div className="mb-4"><InjurySitePicker value={form.site} onChange={site => setForm(p => ({ ...p, site }))} /></div>
+          <div className="mb-4">
+            <InjurySitePicker value={form.site} onChange={site => setForm(p => ({ ...p, site }))}>
+              <PainSlider label="Pain right now" value={form.pain || 0} onChange={v => setForm(p => ({ ...p, pain: v }))} lowLabel="0 none" highLabel="10 worst" />
+            </InjurySitePicker>
+          </div>
           <button type="button" onClick={() => setPainExpanded(p => !p)}
             className="w-full flex items-center justify-between text-[10px] text-slate-500 uppercase tracking-wider mb-3">
-            <span>Pain by Body Part</span>
+            <span>Earlier pain by body part</span>
             {painExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
           {painExpanded && <>
@@ -3519,6 +3532,7 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
                 <div className="text-sm font-semibold">{e.date ? fmtDate(e.date) : "Entry"}</div>
                 {e.condition && <div className="text-[10px] text-slate-500 mt-0.5">{e.condition}</div>}
                 {siteLabel(e.site) && <div className="text-[10px] text-sky-400/80 mt-0.5">{siteLabel(e.site)}</div>}
+                {(e.pain || 0) > 0 && <div className="text-[10px] text-red-400/80 mt-0.5">Pain {e.pain}/10</div>}
               </div>
               <div className="flex items-center gap-2">
                 <Badge color={mp >= 5 ? "red" : mp >= 3 ? "yellow" : "green"}>Max: {mp}/10</Badge>
@@ -3564,6 +3578,8 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
           ];
           // Find which body parts have any non-zero pain in this condition's entries
           const activeParts = PARTS.filter(p => cond.entries.some(e => (e[p.key] || 0) > 0));
+          const hasPainSeries = cond.entries.some(e => (e.pain || 0) > 0);
+          const seriesCount = activeParts.length + (hasPainSeries ? 1 : 0);
 
           const startDate = cond.first; const endDate = cond.last;
           const today = todayStr();
@@ -3575,6 +3591,7 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
             const row = { date: fmtShort(d), secondary: chartAxis === "load" ? (ewmaData[d]?.chronic || 0) : getMaxRPE(d) };
             const entry = entryByDate[d];
             activeParts.forEach(p => { row[p.key] = entry ? (entry[p.key] || null) : null; });
+            if (hasPainSeries) row.pain = entry ? (entry.pain || null) : null;
             return row;
           });
           // Add entries not in datesSorted
@@ -3582,6 +3599,7 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
             if (!chartData.find(c => c.date === fmtShort(e.date))) {
               const row = { date: fmtShort(e.date), secondary: 0 };
               activeParts.forEach(p => { row[p.key] = e[p.key] || null; });
+              if (hasPainSeries) row.pain = e.pain || null;
               chartData.push(row);
             }
           });
@@ -3589,6 +3607,7 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
           const trendColor = cond.trend < 0 ? "text-emerald-400" : cond.trend > 0 ? "text-red-400" : "text-slate-400";
           const trendArrow = cond.trend < 0 ? "↓" : cond.trend > 0 ? "↑" : "→";
           const secondaryLabel = chartAxis === "load" ? "Chronic Load" : "Session RPE";
+          const lastEntry = cond.entries[cond.entries.length - 1];
           return <Card key={cond.name} className={cond.resolved ? "opacity-60" : ""}>
             <div className="flex items-center justify-between mb-3">
               <div>
@@ -3596,15 +3615,16 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
                   <div className="text-sm font-semibold">{cond.name}</div>
                   {cond.resolved && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-semibold">Resolved</span>}
                 </div>
-                <div className="text-[10px] text-slate-500">{cond.daysActive} days · {cond.entries.length} entries · {activeParts.length} areas</div>
-                {siteLabel(cond.entries[cond.entries.length - 1]?.site) && <div className="text-[10px] text-sky-400/80 mt-0.5">{siteLabel(cond.entries[cond.entries.length - 1]?.site)}</div>}
+                <div className="text-[10px] text-slate-500">{cond.daysActive} days · {cond.entries.length} entries · {seriesCount} areas</div>
+                {siteLabel(lastEntry?.site) && <div className="text-[10px] text-sky-400/80 mt-0.5">{siteLabel(lastEntry?.site)}</div>}
+                {(lastEntry?.pain || 0) > 0 && <div className="text-[10px] text-red-400/80 mt-0.5">Pain {lastEntry.pain}/10</div>}
               </div>
               <div className="text-right">
                 {!cond.resolved && <Badge color={cond.currentPain >= 5 ? "red" : cond.currentPain >= 3 ? "yellow" : "green"}>Now: {cond.currentPain}/10</Badge>}
                 <div className={`text-[10px] font-bold mt-1 ${trendColor}`}>{trendArrow} {cond.trend > 0 ? "+" : ""}{cond.trend} since start</div>
               </div>
             </div>
-            <ResponsiveContainer width="100%" height={Math.max(160, 120 + activeParts.length * 8)}>
+            <ResponsiveContainer width="100%" height={Math.max(160, 120 + seriesCount * 8)}>
               <ComposedChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: -15 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                 <XAxis dataKey="date" tick={{ fill: "#64748b", fontSize: 9 }} interval="preserveStartEnd" />
@@ -3615,10 +3635,14 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
                 {activeParts.map(p => (
                   <Line key={p.key} yAxisId="left" type="monotone" dataKey={p.key} stroke={p.color} strokeWidth={2} dot={{ r: 3 }} connectNulls name={p.label} />
                 ))}
+                {hasPainSeries && (
+                  <Line yAxisId="left" type="monotone" dataKey="pain" stroke={PAIN_COLOR} strokeWidth={2} dot={{ r: 3 }} connectNulls name="Pain" />
+                )}
               </ComposedChart>
             </ResponsiveContainer>
             <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1 text-[10px] text-slate-500 justify-center">
               {activeParts.map(p => <span key={p.key}><span className="inline-block w-2 h-2 rounded-full mr-1" style={{ backgroundColor: p.color }} />{p.label}</span>)}
+              {hasPainSeries && <span><span className="inline-block w-2 h-2 rounded-full mr-1" style={{ backgroundColor: PAIN_COLOR }} />Pain</span>}
               <span><span className="inline-block w-2 h-2 rounded-full bg-sky-500 mr-1" />{secondaryLabel}</span>
             </div>
             <div className="mt-2 flex items-center justify-between">
@@ -3833,7 +3857,7 @@ function CoachView({ coachUsers, currentUser, loadUserData, coachViewUser, setCo
   const activeInjuries = (coachData.injury || []).filter(e => e.condition).reduce((acc, e) => {
     const c = e.condition.trim();
     if (!acc[c]) acc[c] = { pain: 0, date: e.date };
-    const mp = Math.max(e.lThumb||0,e.lIndex||0,e.lMiddle||0,e.lRing||0,e.lPinky||0,e.rThumb||0,e.rIndex||0,e.rMiddle||0,e.rRing||0,e.rPinky||0,e.elbowL||0,e.elbowR||0,e.shoulderL||0,e.shoulderR||0,e.legL||0,e.legR||0);
+    const mp = Math.max(e.lThumb||0,e.lIndex||0,e.lMiddle||0,e.lRing||0,e.lPinky||0,e.rThumb||0,e.rIndex||0,e.rMiddle||0,e.rRing||0,e.rPinky||0,e.elbowL||0,e.elbowR||0,e.shoulderL||0,e.shoulderR||0,e.legL||0,e.legR||0,e.pain||0);
     if (e.date >= (acc[c].date || "")) { acc[c] = { pain: mp, date: e.date }; }
     return acc;
   }, {});
