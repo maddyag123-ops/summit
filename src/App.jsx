@@ -403,11 +403,22 @@ const BODY_BACK_SHAPES = [
   ...BODY_BACK_EXCLUSIVE_SHAPES,
 ];
 
+// Which map view (front/back) to open on for a given region: regions that
+// appear on both views default to "front" (arbitrary, stable); front-only or
+// back-only regions open on the view where they're actually drawn.
+const regionMapView = (region) => {
+  if (!region) return "front";
+  if (SHARED_BODY_REGIONS.has(region)) return "front";
+  if (BODY_FRONT_SHAPES.some(s => s.region === region)) return "front";
+  if (BODY_BACK_SHAPES.some(s => s.region === region)) return "back";
+  return "front";
+};
+
 const HAIR_COLOR = "#f59e0b"; // amber — chosen to contrast against the dark slate head/background
 const PAIN_COLOR = "#f472b6"; // pink — distinct from every existing per-part chart color
 
 function InjuryBodyMap({ value, onChange }) {
-  const [mapView, setMapView] = useState("front");
+  const [mapView, setMapView] = useState(() => regionMapView(value?.region));
   const shapes = mapView === "front" ? BODY_FRONT_SHAPES : BODY_BACK_SHAPES;
   // value.side === null with a shape whose own side isn't null means a "Both" selection
   // (or an old upper_back/lower_back entry from before these regions had sides) — highlight
@@ -3491,6 +3502,11 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
   const [view, setView] = useState("log");
   const [chartAxis, setChartAxis] = useState("load"); // "load" or "rpe"
   const [isNewCondition, setIsNewCondition] = useState(false);
+  // Forces InjurySitePicker (and its internal map/list tab + mapView state) to
+  // remount with fresh initial state whenever "+Add Update" loads a different
+  // entry's site into the form — otherwise the map would stay on whichever
+  // view/tab it was last showing.
+  const [formSessionKey, setFormSessionKey] = useState(0);
   const hasAnyPain = (e) => [e.lThumb, e.lIndex, e.lMiddle, e.lRing, e.lPinky, e.rThumb, e.rIndex, e.rMiddle, e.rRing, e.rPinky, e.elbowL, e.elbowR, e.shoulderL, e.shoulderR, e.legL, e.legR].some(v => (v || 0) > 0);
   const [painExpanded, setPainExpanded] = useState(() => hasAnyPain(form));
 
@@ -3506,8 +3522,20 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing]);
 
-  const saveNew = () => { setInjuryData(p => [...p, form]); setForm({ ...emptyInjury(), date: todayStr(), condition: form.condition }); setEditing(null); };
-  const saveEdit = () => { if (editing !== null) setInjuryData(p => p.map((x, i) => i === editing ? form : x)); setForm({ ...emptyInjury(), date: todayStr() }); setEditing(null); };
+  const saveNew = () => {
+    const trimmedCondition = (form.condition || "").trim();
+    setInjuryData(p => [...p, { ...form, condition: trimmedCondition }]);
+    setForm({ ...emptyInjury(), date: todayStr(), condition: trimmedCondition });
+    setEditing(null);
+  };
+  const saveEdit = () => {
+    if (editing !== null) {
+      const trimmedCondition = (form.condition || "").trim();
+      setInjuryData(p => p.map((x, i) => i === editing ? { ...form, condition: trimmedCondition } : x));
+    }
+    setForm({ ...emptyInjury(), date: todayStr() });
+    setEditing(null);
+  };
   const deleteEntry = (idx) => { setInjuryData(p => p.filter((_, i) => i !== idx)); setEditing(null); setForm({ ...emptyInjury(), date: todayStr() }); };
 
   const flags = [];
@@ -3569,10 +3597,19 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
 
   // Start a new update for an existing condition
   const addUpdateForCondition = (condName) => {
-    setForm({ ...emptyInjury(), date: todayStr(), condition: condName });
+    // Compare trimmed names for this lookup only — doesn't rewrite anything stored.
+    const trimmedName = (condName || "").trim();
+    const matching = injuryData.filter(e => e._type !== "resolved" && (e.condition || "").trim() === trimmedName);
+    const sorted = matching.slice().sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+    const latest = sorted[sorted.length - 1];
+    const latestWithSite = [...sorted].reverse().find(e => e.site);
+    const seededCondition = latest ? (latest.condition || "").trim() : trimmedName;
+    const seededSite = latestWithSite?.site ? { ...latestWithSite.site } : null;
+    setForm({ ...emptyInjury(), date: todayStr(), condition: seededCondition, site: seededSite, pain: 0 });
     setEditing(null);
     setView("log");
     setIsNewCondition(false);
+    setFormSessionKey(k => k + 1);
   };
 
   return (
@@ -3617,7 +3654,7 @@ function InjuryView({ injuryData, setInjuryData, dailyData, ewmaData, datesSorte
           <p className="text-[10px] text-slate-600 mb-4">Same name = tracked together over time</p>
           <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Where is it?</div>
           <div className="mb-4">
-            <InjurySitePicker value={form.site} onChange={site => setForm(p => ({ ...p, site }))}>
+            <InjurySitePicker key={formSessionKey} value={form.site} onChange={site => setForm(p => ({ ...p, site }))}>
               <PainSlider label="Pain right now" value={form.pain || 0} onChange={v => setForm(p => ({ ...p, pain: v }))} lowLabel="0 none" highLabel="10 worst" />
             </InjurySitePicker>
           </div>
