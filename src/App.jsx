@@ -304,6 +304,7 @@ const FINGER_STRUCTURES = {
     { key: "ip", label: "IP", sentence: "IP joint" },
     { key: "flexor_tendon", label: "Flexor Tendon", sentence: "flexor tendon" },
     { key: "collateral", label: "Collateral Ligament", sentence: "collateral ligament" },
+    { key: "other", label: "Other", sentence: "other" },
   ],
   _default: [
     { key: "a2", label: "A2 Pulley", sentence: "A2 pulley" },
@@ -314,6 +315,7 @@ const FINGER_STRUCTURES = {
     { key: "pip", label: "PIP", sentence: "PIP joint" },
     { key: "dip", label: "DIP", sentence: "DIP joint" },
     { key: "mcp", label: "MCP", sentence: "MCP joint" },
+    { key: "other", label: "Other", sentence: "other" },
   ],
 };
 const fingerStructuresFor = (fingerKey) => FINGER_STRUCTURES[fingerKey] || FINGER_STRUCTURES._default;
@@ -330,7 +332,9 @@ const siteLabel = (site) => {
     const structures = fingerStructuresFor(site.finger);
     const structure = site.structure ? structures.find(s => s.key === site.structure) : null;
     const base = [sideLabel, fingerLabel].filter(Boolean).join(" ");
-    return structure ? `${base}, ${structure.sentence}` : base;
+    if (!structure) return base;
+    if (structure.key === "other") return `${base}, ${site.other ? `Other: ${site.other}` : "Other"}`;
+    return `${base}, ${structure.sentence}`;
   }
   return [sideLabel, region.label.toLowerCase()].filter(Boolean).join(" ")
     .replace(/^./, c => c.toUpperCase());
@@ -507,10 +511,138 @@ function InjurySiteList({ value, onChange }) {
   );
 }
 
+// ─── Injury Body Map (Stage 3 — zoomed hand view) ───
+// Hand SVG: palm facing the viewer, fingers up. Per the product spec, a right
+// hand draws its thumb on the image's right, a left hand on the image's left
+// (i.e. not mirrored relative to side the way the front/back body views are —
+// this is a deliberate, explicitly-specified convention for this diagram only).
+const HAND_FINGER_SLOTS = {
+  R: [
+    { key: "little", x: 66, topY: 85 },
+    { key: "ring", x: 94, topY: 70 },
+    { key: "middle", x: 122, topY: 60 },
+    { key: "index", x: 150, topY: 72 },
+  ],
+  L: [
+    { key: "index", x: 66, topY: 72 },
+    { key: "middle", x: 94, topY: 60 },
+    { key: "ring", x: 122, topY: 70 },
+    { key: "little", x: 150, topY: 85 },
+  ],
+};
+const HAND_THUMB_SHAPE = {
+  R: { points: "150,165 165,178 190,115 172,100", hitCx: 172, hitCy: 135 },
+  L: { points: "50,165 35,178 10,115 28,100", hitCx: 28, hitCy: 135 },
+};
+
+function InjuryHandDiagram({ side, finger, onSelectFinger }) {
+  const slots = HAND_FINGER_SLOTS[side] || HAND_FINGER_SLOTS.R;
+  const thumb = HAND_THUMB_SHAPE[side] || HAND_THUMB_SHAPE.R;
+  const fingerFill = (key) => (finger === key ? "#38bdf8" : "#475569");
+  const fingerStroke = (key) => (finger === key ? "#0ea5e9" : "#334155");
+  return (
+    <div className="space-y-1.5">
+      <div className="text-[10px] text-slate-500 text-center">{side === "L" ? "Left hand, palm toward you" : "Right hand, palm toward you"}</div>
+      <svg viewBox="0 0 200 230" className="w-full max-w-[340px] mx-auto block select-none" style={{ touchAction: "manipulation" }}>
+        <rect x="45" y="120" width="110" height="95" rx="22" fill="#1e293b" stroke="#334155" strokeWidth="1.5" />
+        <g onClick={() => onSelectFinger("thumb")} style={{ cursor: "pointer" }}>
+          <circle cx={thumb.hitCx} cy={thumb.hitCy} r={22} fill="transparent" />
+          <polygon points={thumb.points} fill={fingerFill("thumb")} stroke={fingerStroke("thumb")} strokeWidth="1.5" opacity={finger === "thumb" ? 1 : 0.85} />
+        </g>
+        {slots.map(s => {
+          const h = 120 - s.topY;
+          return (
+            <g key={s.key} onClick={() => onSelectFinger(s.key)} style={{ cursor: "pointer" }}>
+              <rect x={s.x - 14} y={s.topY - 6} width={28} height={h + 16} fill="transparent" />
+              <rect x={s.x - 10} y={s.topY} width={20} height={h} rx={9} fill={fingerFill(s.key)} stroke={fingerStroke(s.key)} strokeWidth="1.5" opacity={finger === s.key ? 1 : 0.85} />
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function FingerSchematic({ isThumb, structureKey }) {
+  const hi = (keys) => keys.includes(structureKey);
+  const base = 140, tip = 10;
+  const mcpY = isThumb ? 100 : 125;
+  const midY = isThumb ? null : 85;
+  const distalJointY = isThumb ? 55 : 40;
+  return (
+    <svg viewBox="0 0 70 150" className="w-14 shrink-0" aria-hidden="true">
+      <rect x="20" y={tip} width="30" height={base - tip} rx="14" fill="#1e293b" stroke="#334155" strokeWidth="1.5" />
+      {/* Joint lines */}
+      <line x1="20" y1={mcpY} x2="50" y2={mcpY} stroke={hi(["mcp"]) ? PAIN_COLOR : "#334155"} strokeWidth={hi(["mcp"]) ? 3 : 1} />
+      {!isThumb && <line x1="20" y1={midY} x2="50" y2={midY} stroke={hi(["pip"]) ? PAIN_COLOR : "#334155"} strokeWidth={hi(["pip"]) ? 3 : 1} />}
+      <line x1="20" y1={distalJointY} x2="50" y2={distalJointY} stroke={hi(isThumb ? ["ip"] : ["dip"]) ? PAIN_COLOR : "#334155"} strokeWidth={hi(isThumb ? ["ip"] : ["dip"]) ? 3 : 1} />
+      {/* Flexor tendon — full-length line on the palmar surface */}
+      <line x1="35" y1={tip + 4} x2="35" y2={base - 4} stroke={hi(["flexor_tendon"]) ? PAIN_COLOR : "#475569"} strokeWidth={hi(["flexor_tendon"]) ? 3 : 1} strokeDasharray={hi(["flexor_tendon"]) ? "0" : "2 2"} />
+      {/* A2/A4 pulley bands (non-thumb only) */}
+      {!isThumb && <rect x="20" y={mcpY - 18} width="30" height="12" fill={hi(["a2"]) ? PAIN_COLOR : "transparent"} opacity={hi(["a2"]) ? 0.6 : 0} />}
+      {!isThumb && <rect x="20" y={midY - 15} width="30" height="10" fill={hi(["a4"]) ? PAIN_COLOR : "transparent"} opacity={hi(["a4"]) ? 0.6 : 0} />}
+      {/* Lumbrical — near the base, palm side (non-thumb only) */}
+      {!isThumb && <circle cx="35" cy={base - 10} r="6" fill={hi(["lumbrical"]) ? PAIN_COLOR : "transparent"} opacity={hi(["lumbrical"]) ? 0.6 : 0} />}
+      {/* Collateral ligament — marks at a joint's sides */}
+      <circle cx="21" cy={isThumb ? distalJointY : midY} r="3" fill={hi(["collateral"]) ? PAIN_COLOR : "transparent"} />
+      <circle cx="49" cy={isThumb ? distalJointY : midY} r="3" fill={hi(["collateral"]) ? PAIN_COLOR : "transparent"} />
+    </svg>
+  );
+}
+
+function InjuryHandPicker({ value, onChange }) {
+  const selectFinger = (fingerKey) => {
+    onChange({ ...value, finger: fingerKey, structure: null, other: "" });
+  };
+  const selectStructure = (structKey) => {
+    onChange({ ...value, structure: structKey, other: structKey === "other" ? (value.other || "") : "" });
+  };
+  const structures = value.finger ? fingerStructuresFor(value.finger) : [];
+  return (
+    <div className="space-y-3">
+      <div>
+        <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Which finger?</div>
+        <div className="grid grid-cols-5 gap-1 mb-2">
+          {HAND_FINGERS.map(f => (
+            <button key={f.key} type="button" onClick={() => selectFinger(f.key)}
+              className={`min-h-[44px] rounded-lg text-[10px] font-semibold transition-all ${value.finger === f.key ? "bg-sky-500/20 text-sky-300 border border-sky-500/30" : "bg-slate-900/40 text-slate-400 border border-slate-700/30 hover:border-slate-600"}`}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <InjuryHandDiagram side={value.side} finger={value.finger} onSelectFinger={selectFinger} />
+      </div>
+      {value.finger && (
+        <div>
+          <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Which part?</div>
+          <div className="flex gap-3 items-start">
+            <div className="flex-1 space-y-1">
+              {structures.map(s => (
+                <button key={s.key} type="button" onClick={() => selectStructure(s.key)}
+                  className={`w-full min-h-[44px] text-left px-3 rounded-lg text-xs font-medium transition-all ${value.structure === s.key ? "bg-sky-500/20 text-sky-300 border border-sky-500/30" : "bg-slate-900/40 text-slate-400 border border-slate-700/30 hover:border-slate-600"}`}>
+                  {s.label}
+                </button>
+              ))}
+            </div>
+            <FingerSchematic isThumb={value.finger === "thumb"} structureKey={value.structure} />
+          </div>
+          {value.structure === "other" && (
+            <input type="text" maxLength={40} value={value.other || ""}
+              onChange={e => onChange({ ...value, other: e.target.value.slice(0, 40) })}
+              placeholder="e.g. nerve, skin"
+              className="w-full mt-2 bg-slate-900/60 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50" />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InjurySitePicker({ value, onChange, children }) {
   const [tab, setTab] = useState("map");
   const label = siteLabel(value);
   const isOther = value?.region === "other";
+  const isHandWithSide = value?.region === "hand" && !!value?.side;
   const toggleOther = () => {
     if (isOther) onChange(null);
     else onChange({ region: "other", side: null, finger: null, structure: null, other: "" });
@@ -540,6 +672,7 @@ function InjurySitePicker({ value, onChange, children }) {
           <button type="button" onClick={() => onChange(null)} className="text-[10px] text-slate-500 hover:text-red-400 font-semibold">Clear</button>
         </div>
       )}
+      {isHandWithSide && <InjuryHandPicker value={value} onChange={onChange} />}
       {children}
       <p className="text-[10px] text-slate-600">Site is self-reported and is not a diagnosis.</p>
     </div>
